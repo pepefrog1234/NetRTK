@@ -178,7 +178,15 @@ void Network::closure_check(NetEpoch &ep)
     struct Vote {int bad=0,good=0;};
     std::map<std::tuple<int,int,int>,Vote> votes;   /* (stored m, stored a, sat) */
 
-    for (int i=0;i<n;i++) for (int j=i+1;j<n;j++) for (int k=j+1;k<n;k++) {
+    /* triangles of the baseline graph (adjacency from this epoch's baselines;
+       the all-triples loop is O(n^3) and useless for a large sparse network) */
+    std::vector<std::vector<int>> adj(n);
+    for (auto &kv:ep.bl) {adj[kv.first.first].push_back(kv.first.second); adj[kv.first.second].push_back(kv.first.first);}
+    for (auto &v:adj) std::sort(v.begin(),v.end());
+    for (int i=0;i<n;i++) for (int j:adj[i]) {
+        if (j<=i) continue;
+        for (int k:adj[j]) {
+        if (k<=j||!std::binary_search(adj[i].begin(),adj[i].end(),k)) continue;
         int fl[3];
         const nrtk_blepoch_t *b[3]={ep.find(i,j,fl),ep.find(j,k,fl+1),ep.find(k,i,fl+2)};
         if (!b[0]||!b[1]||!b[2]) continue;
@@ -216,6 +224,7 @@ void Network::closure_check(NetEpoch &ep)
                     if (bad) v.bad++; else v.good++;
                 }
             }
+        }
         }
     }
     for (auto &kv:votes) {
@@ -322,7 +331,7 @@ VrsStream::~VrsStream()
     nrtk_cellmgr_free(cm_);
     nrtk_vrs_free(vrs_);
 }
-void VrsStream::reset() { nrtk_vrs_reset(vrs_); }
+void VrsStream::reset() { nrtk_vrs_reset(vrs_); zwd_=nrtk_zwd_state_t{}; }
 
 /* corrected satellites below which the VRS falls back to the nearest station,
  * and needed to resume the VRS */
@@ -376,8 +385,13 @@ int VrsStream::generate(const NetEpoch &ep, VrsOutput &out)
             out.iono_activity=std::max(out.iono_activity,nrtk_ionomon_rate(net_.ionomon(),cell.master,a));
         }
         const nrtk_staepoch_t *mep=ep.sta[cell.master].get();
-        nrtk_atmos_interp(&cfg.atmos,mep,cb.data(),(int)cb.size(),pos_,&out.corr);
+        nrtk_atmos_interp(&cfg.atmos,mep,cb.data(),(int)cb.size(),pos_,&zwd_,&out.corr);
         out.corr.iono_activity=out.iono_activity;
+        if (nrtk_log_enabled(NRTK_LOG_DEBUG)) {
+            nrtk_log(NRTK_LOG_DEBUG,"vrs","%s master %s nbl=%d nok=%d ns=%d zwd_anom=%.3f trop_resid=%.3f",
+                     time_str(ep.t).c_str(),cfg.sta[cell.master].id,(int)cb.size(),out.corr.nok,
+                     out.corr.ns,out.corr.zwd_anom,out.corr.trop_resid);
+        }
         if (out.iono_activity>cfg.atmos.iono_rate_thres) out.corr.degraded|=NRTK_DEG_IONO;
         if (cell.extrap) out.corr.degraded|=NRTK_DEG_EXTRAP;
         /* too few corrected satellites (network start, outage): pass the

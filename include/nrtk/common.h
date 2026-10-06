@@ -29,7 +29,7 @@ extern "C" {
 #endif
 
 #define NRTK_VERSION      "0.1.0"
-#define NRTK_MAXSTA       32            /* max number of reference stations */
+#define NRTK_MAXSTA       160           /* max number of reference stations */
 #define NRTK_MAXSIG       (NFREQ+NEXOBS) /* signal slots per satellite */
 #define NRTK_NSYS         4             /* GPS, Galileo, BeiDou, QZSS */
 #define NRTK_NPROC        3             /* max processing frequencies per system */

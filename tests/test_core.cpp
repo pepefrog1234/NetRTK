@@ -232,6 +232,161 @@ TEST(Antenna, ParseAndCorrect)
 
 /* ionosphere activity monitor: the rate is taken between the oldest and the
  * newest sample of the window, so it must work at 1 s, 5 s and 10 s sampling */
+/* the wet anomaly of a station decays with height: a VRS 1050 m above its lowland
+   neighbours must get the anomaly of its own height, estimated from the one
+   mountain station of the cell (common to all satellites) */
+static void place_sat(nrtk_staepoch_t *ep, int k, int sat, double az, double el)
+{
+    double pos[3],enu[3]={sin(az)*cos(el),cos(az)*cos(el),sin(el)},d[3];
+    ecef2pos(ep->rr,pos);
+    enu2ecef(pos,enu,d);
+    nrtk_satdata_t *s=ep->sat+k;
+    memset(s,0,sizeof(*s));
+    s->sat=sat; s->sysidx=NRTK_GPS;
+    for (int j=0;j<3;j++) s->rs[j]=ep->rr[j]+2.02E7*d[j];
+    s->azel[0]=az; s->azel[1]=el;
+}
+TEST(Atmos, HeightScaledWetAnomaly)
+{
+    const double ep2000[]={2000,1,1,12,0,0};
+    const double tm[]={2026,9,27,6,0,0};
+    nrtk_staepoch_t mep;
+    memset(&mep,0,sizeof(mep));
+    mep.time=epoch2time(tm);
+    double pm[3]={25.0*D2R,121.3*D2R,50.0};
+    pos2ecef(pm,mep.rr);
+    const double az[6]={0,90,180,270,45,225},el[6]={70,30,45,25,60,20};
+    mep.ns=6;
+    for (int k=0;k<6;k++) place_sat(&mep,k,k+1,az[k]*D2R,el[k]*D2R);
+    double mjd=51544.5+timediff(mep.time,epoch2time(ep2000))/86400.0,mh,mw[6];
+    for (int k=0;k<6;k++) nrtk_gmf(mjd,pm[0],pm[1],pm[2],PI/2.0-el[k]*D2R,&mh,&mw[k]);
+
+    /* aux stations: two at the master's height, one 1050 m higher; VRS 1050 m higher */
+    const double dn[3]={20E3,0,-15E3},de[3]={0,25E3,10E3},dh[3]={0,0,1050};
+    const double zm=0.20;                                   /* master wet anomaly (m) */
+    nrtk_blepoch_t bl[3];
+    nrtk_cellbl_t cb[3];
+    for (int i=0;i<3;i++) {
+        double enu[3]={de[i],dn[i],dh[i]},d[3];
+        enu2ecef(pm,enu,d);
+        for (int j=0;j<3;j++) cb[i].apos[j]=mep.rr[j]+d[j];
+        cb[i].bl=bl+i; cb[i].flip=0; cb[i].aux=i+1;
+        memset(bl+i,0,sizeof(bl[i]));
+        bl[i].valid=1; bl[i].sta_m=0; bl[i].sta_a=i+1; bl[i].time=mep.time; bl[i].ns=6;
+        double pa[3];
+        ecef2pos(cb[i].apos,pa);               /* ellipsoidal height (earth curvature) */
+        double f=exp(-(pa[2]-pm[2])/2000.0);
+        for (int k=0;k<6;k++) {
+            bl[i].sat[k].sat=k+1; bl[i].sat[k].sysidx=NRTK_GPS; bl[i].sat[k].fixed=1;
+            bl[i].sat[k].dd_nondisp=k==0?0.0:zm*(f-1.0)*(mw[k]-mw[0]);  /* ref: sat 1 (70 deg) */
+        }
+    }
+    double enu[3]={8E3,5E3,1050},d[3],vpos[3];
+    enu2ecef(pm,enu,d);
+    for (int j=0;j<3;j++) vpos[j]=mep.rr[j]+d[j];
+    nrtk_atmos_opt_t opt;
+    nrtk_atmos_opt_default(&opt);
+    opt.min_sats=1; opt.height_scale=1;
+    nrtk_vcorr_t out;
+    ASSERT_GE(nrtk_atmos_interp(&opt,&mep,cb,3,vpos,nullptr,&out),6);
+    EXPECT_EQ(out.refsat[NRTK_GPS],1);
+    EXPECT_NEAR(out.zwd_anom,zm,0.005);
+    double pv[3];
+    ecef2pos(vpos,pv);
+    double fv=exp(-(pv[2]-pm[2])/2000.0);
+    for (int k=0;k<out.ns;k++) {
+        const nrtk_vsat_t *o=out.sat+k;
+        if (o->isref||!o->ok) continue;
+        int s=o->sat-1;
+        EXPECT_NEAR(o->dd_nondisp-o->dd_trop_model,zm*(fv-1.0)*(mw[s]-mw[0]),0.002)<<"sat "<<o->sat;
+    }
+    /* no height differences: the plain plane, anomaly zero */
+    for (int i=0;i<3;i++) {
+        double enu2[3]={de[i],dn[i],0.0},d2[3];
+        enu2ecef(pm,enu2,d2);
+        for (int j=0;j<3;j++) cb[i].apos[j]=mep.rr[j]+d2[j];
+        for (int k=0;k<6;k++) bl[i].sat[k].dd_nondisp=0.0;
+    }
+    ASSERT_GE(nrtk_atmos_interp(&opt,&mep,cb,3,vpos,nullptr,&out),6);
+    EXPECT_NEAR(out.zwd_anom,0.0,1E-9);
+    for (int k=0;k<out.ns;k++) {
+        const nrtk_vsat_t *o=out.sat+k;
+        if (o->isref||!o->ok) continue;
+        EXPECT_NEAR(o->dd_nondisp-o->dd_trop_model,0.0,1E-9);
+    }
+}
+
+/* the stream state smooths the anomaly and remembers it over epochs without height
+   spread; a stale state starts over */
+TEST(Atmos, WetAnomalyStateSmoothing)
+{
+    const double tm[]={2026,9,27,6,0,0};
+    nrtk_staepoch_t mep;
+    memset(&mep,0,sizeof(mep));
+    mep.time=epoch2time(tm);
+    double pm[3]={25.0*D2R,121.3*D2R,50.0};
+    pos2ecef(pm,mep.rr);
+    const double az[6]={0,90,180,270,45,225},el[6]={70,30,45,25,60,20};
+    mep.ns=6;
+    for (int k=0;k<6;k++) place_sat(&mep,k,k+1,az[k]*D2R,el[k]*D2R);
+    const double ep2000[]={2000,1,1,12,0,0};
+    double mjd=51544.5+timediff(mep.time,epoch2time(ep2000))/86400.0,mh,mw[6];
+    for (int k=0;k<6;k++) nrtk_gmf(mjd,pm[0],pm[1],pm[2],PI/2.0-el[k]*D2R,&mh,&mw[k]);
+    const double dn[3]={20E3,0,-15E3},de[3]={0,25E3,10E3},dh[3]={0,0,1050};
+    const double zm=0.20;
+    nrtk_blepoch_t bl[3];
+    nrtk_cellbl_t cb[3];
+    auto build=[&](bool height) {
+        for (int i=0;i<3;i++) {
+            double enu[3]={de[i],dn[i],height?dh[i]:0.0},d[3];
+            enu2ecef(pm,enu,d);
+            for (int j=0;j<3;j++) cb[i].apos[j]=mep.rr[j]+d[j];
+            cb[i].bl=bl+i; cb[i].flip=0; cb[i].aux=i+1;
+            memset(bl+i,0,sizeof(bl[i]));
+            bl[i].valid=1; bl[i].sta_m=0; bl[i].sta_a=i+1; bl[i].time=mep.time; bl[i].ns=6;
+            double pa[3];
+            ecef2pos(cb[i].apos,pa);
+            double f=exp(-(pa[2]-pm[2])/2000.0);
+            for (int k=0;k<6;k++) {
+                bl[i].sat[k].sat=k+1; bl[i].sat[k].sysidx=NRTK_GPS; bl[i].sat[k].fixed=1;
+                /* "flat": no anomaly signal at all (the ENU-placed stations still differ
+                   in ellipsoidal height by the earth's curvature) */
+                bl[i].sat[k].dd_nondisp=k==0||!height?0.0:zm*(f-1.0)*(mw[k]-mw[0]);
+            }
+        }
+    };
+    double enu[3]={8E3,5E3,1050},d[3],vpos[3];
+    enu2ecef(pm,enu,d);
+    for (int j=0;j<3;j++) vpos[j]=mep.rr[j]+d[j];
+    nrtk_atmos_opt_t opt;
+    nrtk_atmos_opt_default(&opt);
+    opt.min_sats=1; opt.height_scale=1;
+    nrtk_zwd_state_t st;
+    memset(&st,0,sizeof(st));
+    nrtk_vcorr_t out;
+    build(true);
+    ASSERT_GE(nrtk_atmos_interp(&opt,&mep,cb,3,vpos,&st,&out),6);
+    EXPECT_TRUE(st.valid);
+    EXPECT_NEAR(out.zwd_anom,zm,0.02);          /* first update from a 0.3 m prior */
+    for (int n=0;n<20;n++) {                      /* converges */
+        mep.time=timeadd(mep.time,30.0);
+        for (int i=0;i<3;i++) bl[i].time=mep.time;
+        nrtk_atmos_interp(&opt,&mep,cb,3,vpos,&st,&out);
+    }
+    EXPECT_NEAR(out.zwd_anom,zm,0.003);
+    /* flat cell: no new information, the state carries the anomaly */
+    build(false);
+    mep.time=timeadd(mep.time,30.0);
+    for (int i=0;i<3;i++) bl[i].time=mep.time;
+    ASSERT_GE(nrtk_atmos_interp(&opt,&mep,cb,3,vpos,&st,&out),6);
+    EXPECT_NEAR(out.zwd_anom,zm,0.003);
+    /* stale state: starts over, flat cell gives zero */
+    mep.time=timeadd(mep.time,3*3600.0);
+    for (int i=0;i<3;i++) bl[i].time=mep.time;
+    ASSERT_GE(nrtk_atmos_interp(&opt,&mep,cb,3,vpos,&st,&out),6);
+    EXPECT_NEAR(out.zwd_anom,0.0,1E-9);
+}
+
 TEST(Atmos, IonoMonitorSparseSampling)
 {
     for (double step: {1.0,5.0,10.0}) {

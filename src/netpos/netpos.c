@@ -51,9 +51,15 @@
 #define VAR_COND   1E-6         /* conditioning constraint variance (cyc^2) */
 #define NL_MAXSTD  0.15         /* max float std of a DD L1 ambiguity to fix (cyc) */
 #define PAR_AMBIG  0.25         /* partial fixing: drop a DD this far from its integer first (cyc) */
-#define REL_ZWD    0.05         /* a-priori std of the aux ZWD w.r.t. the model (m) */
-#define DZWD_PRIOR 0.05         /* prior std of the relative ZWD in validation (m) */
-#define DZWD_MAX   0.12         /* implausible relative ZWD (m) */
+#define LLI_GF     0.4          /* a loss-of-lock flag needs a geometry-free jump of this
+                                   fraction of the slip threshold to count (2 cm at 1 s) */
+#define DZWD_PRIOR 0.05         /* prior std of the relative ZWD w.r.t. the model (m) at equal
+                                   heights; grows 5 cm per km of height difference */
+#define DZWD_MAX   0.12         /* implausible relative ZWD (m) at equal heights; grows 10 cm per
+                                   km: the standard-atmosphere model (ZWD 0.12 m at sea level)
+                                   underestimates a humid-climate wet delay by up to 0.25 m, and
+                                   that error does not cancel between a coastal and a mountain
+                                   station (Taiwan: 0-3400 m) */
 #define JUMP_RES   0.07         /* max epoch-to-epoch change of a DD residual (m) at 1 s,
                                    relaxed like the geometry-free test: *(1+dt/30) */
 #define VAR_NEWAMB 1E4          /* initial variance of a native L1 ambiguity (cyc^2) */
@@ -96,6 +102,8 @@ struct nrtk_baseline {
     int     ista_m,ista_a;
     double  rm[3],ra[3];        /* marker positions (no tide) */
     double  length;
+    double  dh;                 /* height difference |h_a-h_m| (m) */
+    double  dzwd_prior,dzwd_max;/* relative ZWD prior std / plausibility limit for this baseline (m) */
     int     nf;
     int     engine;
     rtk_t   rtk;                /* rtklib engine */
@@ -222,6 +230,13 @@ extern nrtk_baseline_t *nrtk_bl_create(const nrtk_netpos_opt_t *opt,
     memcpy(bl->rm,m->pos,sizeof(bl->rm));
     memcpy(bl->ra,a->pos,sizeof(bl->ra));
     bl->length=nrtk_dist(bl->rm,bl->ra);
+    {
+        double pm[3],pa[3];
+        ecef2pos(bl->rm,pm); ecef2pos(bl->ra,pa);
+        bl->dh=fabs(pa[2]-pm[2]);
+        bl->dzwd_prior=DZWD_PRIOR+0.05*bl->dh/1000.0;
+        bl->dzwd_max=DZWD_MAX+0.10*bl->dh/1000.0;
+    }
     bl->nf=opt->nfreq>=3?3:2;
     if (bl->nf>NFREQ) bl->nf=NFREQ;
     bl->engine=opt->engine;
@@ -241,8 +256,8 @@ extern nrtk_baseline_t *nrtk_bl_create(const nrtk_netpos_opt_t *opt,
         bl->nat.P=zeros(NAT_NX,NAT_NX);
         if (!bl->nat.x||!bl->nat.P) {free(bl->nat.x); free(bl->nat.P); free(bl); return NULL;}
     }
-    nrtk_log(NRTK_LOG_DEBUG,"netpos","bl %d-%d len=%.1f km nf=%d engine=%s",ista_m,ista_a,
-             bl->length/1E3,bl->nf,bl->engine==NRTK_ENGINE_RTKLIB?"rtklib":"native");
+    nrtk_log(NRTK_LOG_DEBUG,"netpos","bl %d-%d len=%.1f km dh=%.0f m nf=%d engine=%s",ista_m,ista_a,
+             bl->length/1E3,bl->dh,bl->nf,bl->engine==NRTK_ENGINE_RTKLIB?"rtklib":"native");
     if (opt->trace>0) {traceopen("netpos.trace"); tracelevel(opt->trace);}
     return bl;
 }
@@ -350,7 +365,7 @@ static int common_sats(const nrtk_baseline_t *bl, const nrtk_staepoch_t *em,
 static void detect_slips(nrtk_baseline_t *bl, gtime_t t, comsat_t *cs, int n,
                          int *slip)
 {
-    int i,j,k,lli;
+    int i,j,k,lli,codechg;
     double dt,gf,mw,lim;
 
     for (i=0;i<n;i++) {
@@ -359,20 +374,28 @@ static void detect_slips(nrtk_baseline_t *bl, gtime_t t, comsat_t *cs, int n,
         if (!cs[i].ok2) continue;
         dt=st->tlast.time?timediff(t,st->tlast):0.0;
 
-        lli=0;
+        lli=codechg=0;
         for (j=0;j<bl->nf&&j<NRTK_NPROC;j++) {
             lli|=cs[i].m->obs.LLI[j]|cs[i].a->obs.LLI[j];
             if (st->lock>0&&(st->code[0][j]!=cs[i].a->obs.code[j]||
-                             st->code[1][j]!=cs[i].m->obs.code[j])) lli|=LLI_SLIP;
+                             st->code[1][j]!=cs[i].m->obs.code[j])) codechg=1;
         }
-        if (lli&LLI_SLIP) slip[i]=1;
+        if (codechg) slip[i]=1;             /* signal change: other code biases, phase may jump */
         if (st->lock>0&&dt>MAX(MAXGAP,3.0*bl->dt_nom)) slip[i]=1;   /* data gap */
 
         gf=gf_m(cs[i].a)-gf_m(cs[i].m);
         if (st->lock>0&&dt>0.0&&bl->opt.gf_slip>0.0) {
             lim=bl->opt.gf_slip*(1.0+dt/30.0);
             if (fabs(gf-st->gf)>lim) slip[i]=1;
+            /* a receiver loss-of-lock flag is only believed when the phases moved
+               as well: Trimble RINEX carries the flag on 2-10 % of the epochs and
+               half to two thirds of those show no jump at all in the geometry-free
+               combination (Taiwan NetR9/Alloy 30 s data); taking every flag as a
+               slip restarts the wide-lane averaging every few minutes and, with
+               0.5 m code noise, it never converges */
+            if ((lli&LLI_SLIP)&&fabs(gf-st->gf)>LLI_GF*lim) slip[i]=1;
         }
+        else if (lli&LLI_SLIP) slip[i]=1;   /* no phase history to check against */
         for (k=0;k<2;k++) {
             if (k==1&&!cs[i].ok3) continue;
             mw=k==0?mw_cyc(cs[i].a,0,1)-mw_cyc(cs[i].m,0,1):
@@ -699,9 +722,9 @@ static void model_res(const nrtk_baseline_t *bl, gtime_t t, const comsat_t *s,
     *R=D-(Ts-Tr);
     *h=hs-hr;
 }
-/* robust weighted LS of dzwd with prior, outliers beyond max(3 sigma, lim) */
+/* robust weighted LS of dzwd with prior std, outliers beyond max(3 sigma, lim) */
 static int fit_dzwd(const double *R, const double *h, const double *w, int n,
-                    double lim, double *dz)
+                    double lim, double prior, double *dz)
 {
     double swh=0,swr=0,e[MAXOBS],med,mad,thr;
     int i,j,k,iter,use[MAXOBS],nu=0;
@@ -712,8 +735,8 @@ static int fit_dzwd(const double *R, const double *h, const double *w, int n,
         swh=swr=0.0;
         for (i=nu=0;i<n;i++) if (use[i]) {swh+=w[i]*h[i]*h[i]; swr+=w[i]*h[i]*R[i]; nu++;}
         if (nu==0) return 0;
-        /* prior dzwd ~ N(0,DZWD_PRIOR^2) relative to the weights (phase sigma 1 cm) */
-        *dz=swr/(swh+SQR(0.01/DZWD_PRIOR));
+        /* prior dzwd ~ N(0,prior^2) relative to the weights (phase sigma 1 cm) */
+        *dz=swr/(swh+SQR(0.01/prior));
         for (i=k=0;i<n;i++) if (use[i]) e[k++]=fabs(R[i]-*dz*h[i]);
         for (i=0;i<k;i++) for (j=i+1;j<k;j++) if (e[j]<e[i]) {double x=e[i]; e[i]=e[j]; e[j]=x;}
         med=e[k/2]; mad=1.4826*med;
@@ -738,7 +761,7 @@ static void update_dzwd(nrtk_baseline_t *bl, gtime_t t, const comsat_t *cs, int 
             m++;
         }
     }
-    if (m>=3&&fit_dzwd(R,h,w,m,bl->opt.max_res,&dz)>=3&&fabs(dz)<=DZWD_MAX) {
+    if (m>=3&&fit_dzwd(R,h,w,m,bl->opt.max_res,bl->dzwd_prior,&dz)>=3&&fabs(dz)<=bl->dzwd_max) {
         bl->dzwd=bl->dzwd_ok?0.8*bl->dzwd+0.2*dz:dz;
         bl->dzwd_ok=1;
     }
@@ -778,8 +801,8 @@ static void validate_new(nrtk_baseline_t *bl, gtime_t t, const comsat_t *cs, int
     }
     /* relative ZWD: from held satellites if known, else from this batch */
     if (bl->dzwd_ok) dz=bl->dzwd;
-    else if (!fit_dzwd(R,h,w,m,bl->opt.max_res,&dz)) dz=0.0;
-    if (fabs(dz)>DZWD_MAX) dz=0.0;   /* implausible: test against the plain model */
+    else if (!fit_dzwd(R,h,w,m,bl->opt.max_res,bl->dzwd_prior,&dz)) dz=0.0;
+    if (fabs(dz)>bl->dzwd_max) dz=0.0;   /* implausible: test against the plain model */
 
     for (sys=0;sys<NRTK_NSYS;sys++) {
         int r=ref[sys];
@@ -968,7 +991,7 @@ static void rtk_trop(nrtk_baseline_t *bl)
     if (o->tropopt<TROPOPT_EST) return;
     for (r=bl->trop_init?1:0;r<2;r++) {     /* r: 0=aux(rover), 1=master(base) */
         model_zwd(r?bl->rm:bl->ra,&zwd);
-        set_state(rtk->x,rtk->P,rtk->nx,IT_(r,o),zwd,r?SQR(1E-3):SQR(REL_ZWD));
+        set_state(rtk->x,rtk->P,rtk->nx,IT_(r,o),zwd,r?SQR(1E-3):SQR(bl->dzwd_prior));
         if (o->tropopt>=TROPOPT_ESTG) {
             for (i=1;i<=2;i++) set_state(rtk->x,rtk->P,rtk->nx,IT_(r,o)+i,1E-6,r?SQR(1E-5):SQR(0.001));
         }
@@ -1021,7 +1044,7 @@ static int nat_update(nrtk_baseline_t *bl, gtime_t t, const comsat_t *cs, int n,
     int use[MAXOBS],rej[MAXOBS],row_i[MAXOBS],row_p[MAXOBS],i,j,k,s,sys,m=0,p,ps;
 
     dt=f->t.time?timediff(t,f->t):0.0;
-    if (!f->init) {set_state(f->x,f->P,nx,0,1E-6,SQR(REL_ZWD)); f->init=1;}
+    if (!f->init) {set_state(f->x,f->P,nx,0,1E-6,SQR(bl->dzwd_prior)); f->init=1;}
     else if (dt>0.0) f->P[0]+=SQR(bl->opt.trop_prn)*dt;
 
     /* usable satellites: wide-lane fixed, both frequencies, no slip */

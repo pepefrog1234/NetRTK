@@ -3,8 +3,9 @@
 # 24-44 km apart (KYI2 HSIN BAL2 PLIN WALI TAN2); the seven interior stations are leave-out rovers.
 # tw_north_30s_all.yaml enables every station (coordinate adjustment, dense-network experiments).
 # Coordinates: datum = LNK2's receiver (RTX-like) position; all others estimated from the data
-# (tools/twdata/station_coords.py as start, refined with tools/twdata/adjust_coords.py until the
-# corrections were < 1 mm, see docs/VALIDATION.md). Replace with official coordinates when available.
+# (tools/twdata/station_coords.py as start, refined with tools/twdata/adjust_coords.py on DOY 270,
+# then the mean correction of the six independent days DOY 271-276 added; day-to-day scatter of the
+# heights 3-9 mm, see docs/VALIDATION.md 9.1). Replace with official coordinates when available.
 # FUSN is disabled: its baselines fix < 65% even with adjusted coordinates (receiver data quality).
 # Data: data/real/tw/ via tools/twdata/extract_gdms.sh (licence of the Central Weather Administration);
 # other days: tools/twdata/config_for_day.py.
@@ -16,13 +17,13 @@ network:
   antex: data/real/atx/igs20.atx
 stations:
   - id: KYI2
-    ecef: [-2984976.1818, 4952058.4081, 2683199.4480]
+    ecef: [-2984976.1704, 4952058.3895, 2683199.4376]
     antenna: "TRM115000.00+S SCIT"
     arp_height_m: 0.0000
     rinex: data/real/tw/2026_270/kyi22700.26o.gz
     rtcm_id: 301
   - id: HSIN
-    ecef: [-2984386.2990, 4964052.4611, 2661790.2724]
+    ecef: [-2984386.2856, 4964052.4387, 2661790.2601]
     antenna: "TRM57971.00 SCIT"
     arp_height_m: 0.0000
     rinex: data/real/tw/2026_270/hsin2700.26o.gz
@@ -35,33 +36,33 @@ stations:
     rinex: data/real/tw/2026_270/fusn2700.26o.gz
     rtcm_id: 303
   - id: PLIN
-    ecef: [-3042295.0110, 4923212.0478, 2672523.3059]
+    ecef: [-3042294.9746, 4923211.9899, 2672523.2736]
     antenna: "TRM57971.00 SCIT"
     arp_height_m: 0.0000
     rinex: data/real/tw/2026_270/plin2700.26o.gz
     rtcm_id: 304
   - id: WALI
-    ecef: [-3034105.4715, 4914672.7166, 2696728.4214]
+    ecef: [-3034105.4570, 4914672.6929, 2696728.4077]
     antenna: "TRM115000.00+S SCIT"
     arp_height_m: 0.0000
     rinex: data/real/tw/2026_270/wali2700.26o.gz
     rtcm_id: 305
   - id: TAN2
-    ecef: [-3011889.1540, 4928198.2481, 2697011.0143]
+    ecef: [-3011889.1470, 4928198.2367, 2697011.0079]
     antenna: "TRM115000.00+S SCIT"
     arp_height_m: 0.0000
     rinex: data/real/tw/2026_270/tan22700.26o.gz
     rtcm_id: 306
   - id: YAME
     enabled: false              # leave-out rover
-    ecef: [-2997324.8424, 4952037.1929, 2669972.5185]
+    ecef: [-2997324.8323, 4952037.1761, 2669972.5093]
     antenna: "TRM57971.00 SCIT"
     arp_height_m: 0.0000
     rinex: data/real/tw/2026_270/yame2700.26o.gz
     rtcm_id: 307
   - id: KSH2
     enabled: false              # leave-out rover
-    ecef: [-2999691.3740, 4957751.7147, 2656645.8047]
+    ecef: [-2999691.3463, 4957751.6693, 2656645.7801]
     antenna: "TRM115000.00+S SCIT"
     arp_height_m: 0.0000
     rinex: data/real/tw/2026_270/ksh22700.26o.gz
@@ -75,34 +76,34 @@ stations:
     rtcm_id: 309
   - id: WUKU
     enabled: false              # leave-out rover
-    ecef: [-3010824.7073, 4932392.5519, 2690938.9421]
+    ecef: [-3010824.7012, 4932392.5419, 2690938.9364]
     antenna: "TRM115000.00+S SCIT"
     arp_height_m: 0.0000
     rinex: data/real/tw/2026_270/wuku2700.26o.gz
     rtcm_id: 310
   - id: ZUZH
     enabled: false              # leave-out rover
-    ecef: [-3022266.0316, 4923338.4377, 2695614.0652]
+    ecef: [-3022266.0412, 4923338.4532, 2695614.0743]
     antenna: "TRM115000.00+S SCIT"
     arp_height_m: 0.0000
     rinex: data/real/tw/2026_270/zuzh2700.26o.gz
     rtcm_id: 311
   - id: ANBU
     enabled: false              # leave-out rover
-    ecef: [-3020609.1951, 4923470.2848, 2697765.9311]
+    ecef: [-3020609.2127, 4923470.3146, 2697765.9480]
     antenna: "TRM115000.00+S SCIT"
     arp_height_m: 0.0000
     rinex: data/real/tw/2026_270/anbu2700.26o.gz
     rtcm_id: 312
   - id: SAJ2
     enabled: false              # leave-out rover
-    ecef: [-3015901.4815, 4921188.5292, 2705275.9725]
+    ecef: [-3015901.4744, 4921188.5177, 2705275.9659]
     antenna: "TRM115000.00+S SCIT"
     arp_height_m: 0.0000
     rinex: data/real/tw/2026_270/saj22700.26o.gz
     rtcm_id: 313
   - id: BAL2
-    ecef: [-3023971.3363, 4948782.9427, 2649556.8762]
+    ecef: [-3023971.3643, 4948782.9886, 2649556.9023]
     antenna: "TRM115000.00+S SCIT"
     arp_height_m: 0.0000
     rinex: data/real/tw/2026_270/bal22700.26o.gz

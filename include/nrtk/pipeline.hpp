@@ -149,6 +149,7 @@ private:
     nrtk_vrs_t *vrs_=nullptr;
     std::vector<int> health_;
     bool fallback_=false;          /* too few corrected satellites: nearest station */
+    nrtk_zwd_state_t zwd_{};        /* smoothed wet anomaly of the cell master (atmos) */
 };
 
 /* offline input: epoch-aligned reading of the stations' RINEX files ----------*/

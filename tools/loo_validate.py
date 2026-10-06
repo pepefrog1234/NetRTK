@@ -269,7 +269,8 @@ def main():
         ('Position: VRS fix rate >= 95% and >= nearest + 5 pts', v.get('fix_rate', 0) >= 0.95 and v.get('fix_rate', 0) >= nr.get('fix_rate', 0) + 0.05,
          'VRS %.1f%%, nearest %.1f%%' % (100 * v.get('fix_rate', 0), 100 * nr.get('fix_rate', 0))),
         ('Position: rover TTFF <= 60 s and < nearest', v.get('ttff_mean', 1e9) <= 60 and v.get('ttff_mean', 1e9) < nr.get('ttff_mean', 1e9) if nr.get('ttff_mean', 1e9) == nr.get('ttff_mean', 1e9) else v.get('ttff_mean', 1e9) <= 60,
-         'VRS %.0f s, nearest %s' % (v.get('ttff_mean', float('nan')), '%.0f s' % nr['ttff_mean'] if nr.get('ttff_mean') == nr.get('ttff_mean') else 'no fix')),
+         'VRS %.0f s, nearest %s' % (v.get('ttff_mean', float('nan')),
+                                     '%.0f s' % nr['ttff_mean'] if nr.get('ttff_mean') is not None and nr['ttff_mean'] == nr['ttff_mean'] else 'no fix')),
         ('Position: wrong fixes (>10 cm) <= 0.1%', v.get('wrong_fix', 1) <= 0.001, '%.3f%%' % (100 * v.get('wrong_fix', float('nan')))),
     ]
     png = plot(out, sols, truth, '%s: leave-one-out %s' % (cfg['name'], loo['id']))

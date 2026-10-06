@@ -123,6 +123,23 @@ python3 tools/twdata/adjust_coords.py -c conf/tw/tw_north_30s_all.yaml -r result
 重複到修正量 < 1 mm；`conf/tw/tw_north_30s.yaml` 是只保留環狀 6 站、內部 7 站留一的驗證設定
 （`tools/twdata/config_for_day.py` 產生其他日期的設定）。結果見 `docs/VALIDATION.md` 第 9 節。
 
+全台灣站網（124 站中 120 站有 50 km 內的鄰站；11 站 NetR9 在 30 s 無法固定而停用、10 站留一）
+用 `conf/tw/tw_all_30s.yaml`（GPS+Galileo；`NRTK_MAXSTA` 160）：
+
+```bash
+./build/bin/nrtk-net -c conf/tw/tw_all_30s.yaml -o results/tw_all_30s_net
+```
+
+```bash
+./build/bin/nrtk-gen -c conf/tw/tw_all_30s.yaml
+```
+
+```bash
+python3 tools/loo_validate.py -c conf/tw/tw_all_30s.yaml -j LOO_HAN2 --systems G --reset 1800 --warmup 3600
+```
+
+結果見 `docs/VALIDATION.md` 9.4 節。
+
 ### 3. 即時伺服器
 
 ```bash

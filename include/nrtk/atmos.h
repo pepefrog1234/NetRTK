@@ -8,7 +8,10 @@
  * n=2 auxiliary stations: linear interpolation model (LIM, exact),
  * n>=3: least-squares model (LSM) with residual RMS as quality indicator.
  * The non-dispersive part is reduced by the DD Saastamoinen+GMF model before
- * the fit and the model is restored with the height of the VRS.
+ * the fit and the model is restored with the height of the VRS. The remaining
+ * wet anomaly of the master, c, is estimated from the height differences of the
+ * cell (anomaly(h) = c*exp(-(h-h_m)/2 km)), common to all satellites, so that a
+ * VRS above or below its cell gets the anomaly of its own height.
  *----------------------------------------------------------------------------*/
 #ifndef NRTK_ATMOS_H
 #define NRTK_ATMOS_H
@@ -25,6 +28,9 @@ typedef struct {
     int    method;              /* NRTK_INTERP_xxx */
     int    min_bl;              /* min baselines per satellite (2) */
     int    trop_model;          /* reduce non-dispersive part by the model */
+    int    height_scale;        /* experimental: scale the wet anomaly with the height of the
+                                   VRS (master anomaly from the cell's height spread, see
+                                   nrtk_zwd_state_t); off: plane through the stations */
     double iono_rate_thres;     /* ionosphere activity threshold (m/min) */
     double max_extrap_km;       /* max extrapolation distance (km) */
     int    min_sats;            /* fewer usable satellites -> degraded */
@@ -70,14 +76,28 @@ typedef struct {
     int     nok;                /* satellites with corrections (incl. refs) */
     double  iono_activity;      /* max |d(DD iono)/dt| over the cell (m/min) */
     double  trop_resid;         /* RMS of reduced non-dispersive residuals (m) */
+    double  zwd_anom;           /* master zenith wet anomaly vs the model (m), from the
+                                   height spread of the cell (0 without height differences) */
     int     degraded;           /* NRTK_DEG_xxx flags */
 } nrtk_vcorr_t;
 
+/* wet anomaly state of a VRS stream: the master's zenith wet anomaly reduced to
+ * sea level (c0 = c*exp(h_m/H)) is a slowly varying quantity; a scalar Kalman
+ * filter (random walk 2 cm/sqrt(h)) smooths the per-epoch estimates, whose
+ * noise is 1-5 cm when the cell has little height spread. */
+typedef struct {
+    double  c0;                 /* sea-level zenith wet anomaly (m) */
+    double  var;                /* its variance (m^2) */
+    gtime_t time;               /* last update */
+    int     valid;
+} nrtk_zwd_state_t;
+
 /* interpolate corrections to vpos. master: prepared master epoch (satellite
- * positions), bls: baselines master->aux of the cell. */
+ * positions), bls: baselines master->aux of the cell. st: wet anomaly state of
+ * the stream (NULL: the per-epoch estimate is used as is). */
 int nrtk_atmos_interp(const nrtk_atmos_opt_t *opt, const nrtk_staepoch_t *master,
                       const nrtk_cellbl_t *bls, int nbl, const double *vpos,
-                      nrtk_vcorr_t *out);
+                      nrtk_zwd_state_t *st, nrtk_vcorr_t *out);
 
 /* ionosphere activity monitor: tracks DD ionosphere rates per baseline */
 typedef struct nrtk_ionomon nrtk_ionomon_t;

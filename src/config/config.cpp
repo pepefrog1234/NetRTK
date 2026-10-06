@@ -232,6 +232,7 @@ extern "C" int nrtk_config_load(const char *file, nrtk_config_t *c, char *err,
         get(ip,"min_baselines",c->atmos.min_bl);
         get(ip,"min_sats",c->atmos.min_sats);
         get_bool(ip,"trop_model",c->atmos.trop_model);
+        get_bool(ip,"height_scale",c->atmos.height_scale);
         get(ip,"max_extrapolation_km",c->atmos.max_extrap_km);
 
         /* output */
