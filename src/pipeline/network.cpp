@@ -355,6 +355,7 @@ int VrsStream::generate(const NetEpoch &ep, VrsOutput &out)
             else { /* swap roles */
                 for (int k=0;k<cell.naux;k++) if (cell.aux[k]==master) cell.aux[k]=cell.master;
                 cell.master=master;
+                cell.dist_km=nrtk_dist(pos_,cfg.sta[master].pos)/1E3;
             }
         }
     }

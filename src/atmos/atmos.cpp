@@ -121,12 +121,20 @@ extern "C" int nrtk_atmos_interp(const nrtk_atmos_opt_t *opt,
             nrtk_vsat_t *o=out->sat+out->ns++;
             memset(o,0,sizeof(*o));
             o->sat=s->sat; o->sysidx=(int8_t)sys;
-            if (s->sat==ref) {o->ok=1; o->isref=1; o->nbl=(uint8_t)refcnt; out->nok++; continue;}
+            if (s->sat==ref) {
+                o->ok=1; o->isref=1; o->nbl=(uint8_t)refcnt; out->nok++;
+                for (int i=0;i<nbl;i++) {
+                    if (!bls[i].bl||!bls[i].bl->valid) continue;
+                    const nrtk_blsat_t *b=find_sat(bls[i].bl,ref);
+                    if (b&&b->fixed&&b->slip) o->slip=1;
+                }
+                continue;
+            }
 
             /* DD values master->aux_i w.r.t. the common reference */
             std::vector<double> n,e,I,R;
             uint32_t mask=0;
-            int newfix=0;
+            int newfix=0,slipped=0;
             for (int i=0;i<nbl;i++) {
                 const nrtk_blepoch_t *bl=bls[i].bl;
                 if (!bl||!bl->valid) continue;
@@ -141,6 +149,7 @@ extern "C" int nrtk_atmos_interp(const nrtk_atmos_opt_t *opt,
                 R.push_back(opt->trop_model?ddd-ddt:ddd);
                 mask|=1u<<i;
                 newfix|=bs->newfix|br->newfix;
+                slipped|=bs->slip;
             }
             int cnt=(int)n.size();
             if (cnt<opt->min_bl) continue;
@@ -170,6 +179,7 @@ extern "C" int nrtk_atmos_interp(const nrtk_atmos_opt_t *opt,
             o->nbl=(uint8_t)cnt;
             o->blmask=mask;
             o->newfix=(uint8_t)newfix;
+            o->slip=(uint8_t)slipped;
             o->dd_iono=ai*vn+bi*ve;
             o->dd_trop_model=ddt_v;
             o->dd_nondisp=an*vn+bnn*ve+ddt_v;
@@ -221,7 +231,10 @@ extern "C" void nrtk_ionomon_add(nrtk_ionomon_t *m, const nrtk_blepoch_t *b)
         int ref=b->refsat[s->sysidx];
         auto &q=st.sat[s->sat];
         if (!s->fixed||s->isref||!ref) {q.clear(); continue;}
-        if (!q.empty()&&(q.back().ref!=ref||timediff(b->time,q.back().t)>5.0)) q.clear();
+        /* restart after a reference change or a gap (half the window: the rate
+           is taken between the oldest and the newest sample, so the sampling
+           interval itself does not matter) */
+        if (!q.empty()&&(q.back().ref!=ref||timediff(b->time,q.back().t)>0.5*m->window)) q.clear();
         q.push_back({b->time,s->dd_iono,ref});
         while (q.size()>2&&timediff(b->time,q.front().t)>m->window) q.pop_front();
         double dt=timediff(b->time,q.front().t);

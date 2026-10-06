@@ -50,6 +50,7 @@
 #define MAXGAP     10.0         /* max data gap keeping ambiguities (s) */
 #define VAR_COND   1E-6         /* conditioning constraint variance (cyc^2) */
 #define NL_MAXSTD  0.15         /* max float std of a DD L1 ambiguity to fix (cyc) */
+#define PAR_AMBIG  0.25         /* partial fixing: drop a DD this far from its integer first (cyc) */
 #define REL_ZWD    0.05         /* a-priori std of the aux ZWD w.r.t. the model (m) */
 #define DZWD_PRIOR 0.05         /* prior std of the relative ZWD in validation (m) */
 #define DZWD_MAX   0.12         /* implausible relative ZWD (m) */
@@ -74,8 +75,9 @@ typedef struct {
     double  Nwl,Newl,N1;        /* SD integers with per-system datum */
     double  Nwl_nat;            /* wide-lane used by the native float state */
     int     nfixep;
-    double  res_prev[2];        /* last DD residual f1/f2 (continuity check) */
+    double  res_prev[3];        /* last DD residual per proc slot (continuity check) */
     int     res_ref;            /* reference sat of res_prev */
+    int     res_has3;           /* res_prev[2] valid */
     double  eavg,eavg_w;        /* mean model residual of a held fix (m), averaging time (s) */
     gtime_t eavg_t;
     int     eavg_anc;           /* anchor satellite of eavg */
@@ -450,7 +452,9 @@ static void reset_amb(nrtk_baseline_t *bl, int sat)
         for (k=0;k<nx;k++) bl->rtk.P[j+k*nx]=bl->rtk.P[k+j*nx]=0.0;
     }
 }
-/* best (highest elevation) satellite of a system satisfying a flag ----------*/
+/* best (highest elevation) satellite of a system satisfying a flag ----------
+ * type 2 (held L1 reference) also needs both phases this epoch: every DD
+ * residual of the system is formed against it */
 static int anchor(const nrtk_baseline_t *bl, const comsat_t *cs, int n, int sys,
                   int type)
 {
@@ -462,7 +466,7 @@ static int anchor(const nrtk_baseline_t *bl, const comsat_t *cs, int n, int sys,
                                                  rtk_bias_ok(&bl->rtk,cs[i].sat,1))))) continue;
         if (type==1&&!(st->ewl&&cs[i].ok3&&(!rtk||(rtk_bias_ok(&bl->rtk,cs[i].sat,1)&&
                                                   rtk_bias_ok(&bl->rtk,cs[i].sat,2))))) continue;
-        if (type==2&&!(st->nl==1&&amb_ok(bl,cs[i].sat))) continue;
+        if (type==2&&!(st->nl==1&&cs[i].ok2&&amb_ok(bl,cs[i].sat))) continue;
         if (best<0||cs[i].el>cs[best].el) best=i;
     }
     return best;
@@ -487,7 +491,7 @@ static int collect_cons(nrtk_baseline_t *bl, const comsat_t *cs, int n,
         a=anchor(bl,cs,n,sys,2);
         w=rtk&&with_wl?anchor(bl,cs,n,sys,0):-1;
         e=rtk&&with_wl?anchor(bl,cs,n,sys,1):-1;
-        for (i=0;i<n&&nc<maxc-3;i++) {
+        for (i=0;i<n&&nc+5<=maxc;i++) {   /* up to 5 constraints per satellite */
             const satst_t *st=bl->ss+cs[i].sat-1;
             int s=cs[i].sat;
             if (cs[i].sysidx!=sys) continue;
@@ -609,7 +613,13 @@ static void fix_widelanes(nrtk_baseline_t *bl, gtime_t t, const comsat_t *cs, in
                     nrtk_log(NRTK_LOG_DEBUG,"netpos","bl %d-%d sat=%d unfix: %s x=%.2f N=%.0f",
                              bl->ista_m,bl->ista_a,cs[i].sat,k?"EWL":"WL",x,
                              k==0?st->Nwl:st->Newl);
-                    if (k==0) {st->wl=0; st->nl=0;} else st->ewl=0;
+                    if (k==0) {
+                        /* the L1 integer was derived from this wide-lane and the
+                           float is pinned to it: start that satellite over */
+                        if (st->nl) {bl->nrefix++; reset_amb(bl,cs[i].sat);}
+                        st->wl=0; st->nl=0;
+                    }
+                    else st->ewl=0;
                     reset_mw(st,k);
                 }
             }
@@ -717,7 +727,7 @@ static void update_dzwd(nrtk_baseline_t *bl, gtime_t t, const comsat_t *cs, int 
         if ((a=anchor(bl,cs,n,sys,2))<0) continue;
         for (i=0;i<n&&m<MAXOBS;i++) {
             const satst_t *st=bl->ss+cs[i].sat-1;
-            if (i==a||cs[i].sysidx!=sys||st->nl!=1||st->newfix) continue;
+            if (i==a||cs[i].sysidx!=sys||st->nl!=1||st->newfix||!cs[i].ok2) continue;
             D=dd_nondisp(cs+i,cs+a,st,bl->ss+cs[a].sat-1,NULL);
             model_res(bl,t,cs+i,cs+a,D,R+m,h+m);
             w[m]=SQR(sin(cs[i].el));
@@ -728,25 +738,35 @@ static void update_dzwd(nrtk_baseline_t *bl, gtime_t t, const comsat_t *cs, int 
         bl->dzwd=bl->dzwd_ok?0.8*bl->dzwd+0.2*dz:dz;
         bl->dzwd_ok=1;
     }
+    if (bl->nep%60==0&&nrtk_log_enabled(NRTK_LOG_DEBUG)) {
+        nrtk_log(NRTK_LOG_DEBUG,"netpos","bl %d-%d dzwd=%.3f ok=%d (fit %.3f from %d sats)",
+                 bl->ista_m,bl->ista_a,bl->dzwd,bl->dzwd_ok,m>=3?dz:0.0,m);
+    }
 }
 static double wl_step(const comsat_t *s)   /* D shift per wide-lane cycle (m) */
 {
     double f1=s->m->freq[0],f2=s->m->freq[1];
     return CLIGHT/(f1+f2)*f2/(f1-f2);
 }
-/* validate tentatively fixed satellites (nl==2) --------------------------------*/
+/* validate tentatively fixed satellites (nl==2) --------------------------------
+ * A wrong integer of a partner shows up in its own residual only; a wrong
+ * reference shifts every partner by the same amount. When all (>=2) partners
+ * fail with a common offset the reference is suspect: a new (nl==2) datum is
+ * dropped at once, a held one after two such rounds, and the partners are not
+ * penalized (otherwise a wrong held reference would reject every new fix of
+ * its system until it sets). */
 static void validate_new(nrtk_baseline_t *bl, gtime_t t, const comsat_t *cs, int n,
                          const int *ref)
 {
-    double R[MAXOBS],h[MAXOBS],w[MAXOBS],dz=0.0,e,k;
-    int idx[MAXOBS],sys,i,m=0,bad,cnt;
+    double R[MAXOBS],h[MAXOBS],w[MAXOBS],e[MAXOBS],dz=0.0,k,emin,emax;
+    int idx[MAXOBS],sys,i,m=0,bad,cnt,refbad;
 
     for (sys=0;sys<NRTK_NSYS;sys++) {
         int r=ref[sys];
-        if (r<0||!bl->ss[cs[r].sat-1].nl) continue;
+        if (r<0||!bl->ss[cs[r].sat-1].nl||!cs[r].ok2) continue;
         for (i=0;i<n&&m<MAXOBS;i++) {
             satst_t *st=bl->ss+cs[i].sat-1;
-            if (i==r||cs[i].sysidx!=sys||!st->nl) continue;
+            if (i==r||cs[i].sysidx!=sys||!st->nl||!cs[i].ok2) continue;
             model_res(bl,t,cs+i,cs+r,dd_nondisp(cs+i,cs+r,st,bl->ss+cs[r].sat-1,NULL),R+m,h+m);
             w[m]=SQR(sin(cs[i].el));
             idx[m++]=i;
@@ -759,31 +779,54 @@ static void validate_new(nrtk_baseline_t *bl, gtime_t t, const comsat_t *cs, int
 
     for (sys=0;sys<NRTK_NSYS;sys++) {
         int r=ref[sys];
-        if (r<0||!bl->ss[cs[r].sat-1].nl) continue;
+        satst_t *sr;
+        if (r<0||!bl->ss[cs[r].sat-1].nl||!cs[r].ok2) continue;
+        sr=bl->ss+cs[r].sat-1;
+        emin=1E9; emax=-1E9;
         for (i=bad=cnt=0;i<m;i++) {
             int j=idx[i];
-            satst_t *st=bl->ss+cs[j].sat-1;
-            if (cs[j].sysidx!=sys||st->nl!=2) continue;
+            if (cs[j].sysidx!=sys||bl->ss[cs[j].sat-1].nl!=2) continue;
             cnt++;
-            e=R[i]-dz*h[i];
-            if (fabs(e)<=bl->opt.max_res) continue;
-            k=ROUND(e/wl_step(cs+j));
+            e[i]=R[i]-dz*h[i];
+            if (fabs(e[i])<=bl->opt.max_res) continue;
+            bad++;
+            emin=MIN(emin,e[i]); emax=MAX(emax,e[i]);
+        }
+        if (cnt==0) continue;
+        /* every partner fails by (nearly) the same amount: the reference is suspect */
+        refbad=cnt>=2&&bad==cnt&&emax-emin<=2.0*bl->opt.max_res;
+        if (sr->nl==2) {
+            if (bad==cnt) {            /* no partner accepted: drop the new datum */
+                sr->nl=0;
+                if (refbad) {sr->wl=0; reset_mw(sr,0);}
+            }
+        }
+        else if (refbad) {
+            if (++sr->nrej>=2) {
+                nrtk_log(NRTK_LOG_DEBUG,"netpos","bl %d-%d sat=%d unfix: reference fails validation "
+                         "(%d partners, res %.3f..%.3f)",bl->ista_m,bl->ista_a,cs[r].sat,cnt,emin,emax);
+                sr->nl=0; sr->nrej=0; sr->wl=0;
+                reset_mw(sr,0); reset_amb(bl,cs[r].sat);
+                bl->nrefix++;
+            }
+        }
+        else if (bad<cnt) sr->nrej=0;
+
+        for (i=0;i<m;i++) {
+            int j=idx[i];
+            satst_t *st=bl->ss+cs[j].sat-1;
+            if (cs[j].sysidx!=sys||st->nl!=2||fabs(e[i])<=bl->opt.max_res) continue;
+            st->nl=0;
+            if (refbad) continue;        /* not the partner's fault */
+            k=ROUND(e[i]/wl_step(cs+j));
             nrtk_log(NRTK_LOG_DEBUG,"netpos","bl %d-%d sat=%d fix rejected res=%.3f dzwd=%.3f",
-                     bl->ista_m,bl->ista_a,cs[j].sat,e,dz);
-            if ((k!=0.0&&fabs(e-k*wl_step(cs+j))<bl->opt.max_res)||++st->nrej>=3) {
+                     bl->ista_m,bl->ista_a,cs[j].sat,e[i],dz);
+            if ((k!=0.0&&fabs(e[i]-k*wl_step(cs+j))<bl->opt.max_res)||++st->nrej>=3) {
                 nrtk_log(NRTK_LOG_DEBUG,"netpos","bl %d-%d sat=%d unfix: WL suspect (res=%.3f k=%.0f)",
-                         bl->ista_m,bl->ista_a,cs[j].sat,e,k);
+                         bl->ista_m,bl->ista_a,cs[j].sat,e[i],k);
                 st->wl=0; st->nrej=0;
                 reset_mw(st,0);
             }
-            st->nl=0;
-            bad++;
-        }
-        /* all partners of a new datum satellite rejected: the datum is suspect */
-        if (cnt>0&&bad==cnt&&bl->ss[cs[r].sat-1].nl==2) {
-            satst_t *sr=bl->ss+cs[r].sat-1;
-            sr->nl=0;
-            if (cnt>=2) {sr->wl=0; reset_mw(sr,0);}
         }
     }
 }
@@ -799,18 +842,32 @@ static void monitor_held(nrtk_baseline_t *bl, gtime_t t, const comsat_t *cs, int
 
     if (!bl->dzwd_ok) return;
     for (sys=0;sys<NRTK_NSYS;sys++) {
+        const satst_t *sa;
         if ((a=anchor(bl,cs,n,sys,2))<0) continue;
+        sa=bl->ss+cs[a].sat-1;
         for (i=nbad=nfix=0;i<n;i++) {
             satst_t *st=bl->ss+cs[i].sat-1;
             bad[i]=0;
-            if (i==a||cs[i].sysidx!=sys||st->nl!=1) continue;
+            if (i==a||cs[i].sysidx!=sys||st->nl!=1||!cs[i].ok2) continue;
             nfix++;
             model_res(bl,t,cs+i,cs+a,dd_nondisp(cs+i,cs+a,st,bl->ss+cs[a].sat-1,NULL),&R,&h);
             e=R-bl->dzwd*h;
             if (fabs(e)>2.0*bl->opt.max_res) st->nbad++; else st->nbad=0;
 
             dt=st->eavg_t.time?timediff(t,st->eavg_t):1E9;
-            if (st->eavg_w<=0.0||dt>30.0||st->eavg_anc!=cs[a].sat) {
+            if (st->eavg_w>0.0&&dt<=30.0&&st->eavg_anc!=cs[a].sat) {
+                /* anchor changed: re-reference the mean with the new anchor's
+                   own mean w.r.t. the old one, DD(i,new) = DD(i,old) - DD(new,old),
+                   instead of restarting the average (a wrong old anchor cancels) */
+                if (sa->eavg_w>0.0&&sa->eavg_anc==st->eavg_anc&&sa->eavg_t.time&&
+                    timediff(t,sa->eavg_t)<=30.0) {
+                    st->eavg-=sa->eavg;
+                    st->eavg_w=MIN(st->eavg_w,sa->eavg_w);
+                    st->eavg_anc=cs[a].sat;
+                }
+                else st->eavg_w=0.0;
+            }
+            if (st->eavg_w<=0.0||dt>30.0) {
                 st->eavg=e; st->eavg_w=1E-9; st->eavg_anc=cs[a].sat;
             }
             else {
@@ -957,7 +1014,7 @@ static int nat_update(nrtk_baseline_t *bl, gtime_t t, const comsat_t *cs, int n,
     natf_t *f=&bl->nat;
     const int nx=NAT_NX;
     double y[MAXOBS],lam[MAXOBS],h[MAXOBS],var[MAXOBS],*H,*v,*R,dt;
-    int use[MAXOBS],row_i[MAXOBS],row_p[MAXOBS],i,j,k,s,sys,m=0,p,ps;
+    int use[MAXOBS],rej[MAXOBS],row_i[MAXOBS],row_p[MAXOBS],i,j,k,s,sys,m=0,p,ps;
 
     dt=f->t.time?timediff(t,f->t):0.0;
     if (!f->init) {set_state(f->x,f->P,nx,0,1E-6,SQR(REL_ZWD)); f->init=1;}
@@ -970,15 +1027,20 @@ static int nat_update(nrtk_baseline_t *bl, gtime_t t, const comsat_t *cs, int n,
         if (!use[i]) continue;
         y[i]=nat_obs(bl,t,cs+i,st->Nwl,lam+i,h+i,var+i);
     }
-    /* drop states of satellites not usable or whose wide-lane changed */
+    /* drop the states of satellites that slipped or whose wide-lane changed; a
+       satellite merely missing an observation this epoch (or temporarily below
+       the mask) keeps its state and is just not updated (gaps > MAXGAP are
+       slips, see detect_slips) */
     for (s=1;s<=MAXSAT;s++) {
         if (f->x[s]==0.0) continue;
         for (i=0;i<n;i++) if (cs[i].sat==s) break;
-        if (i>=n||!use[i]||bl->ss[s-1].Nwl_nat!=bl->ss[s-1].Nwl) nat_clear(f,s);
+        if (i<n&&(!bl->ss[s-1].wl||slip[i]||bl->ss[s-1].Nwl_nat!=bl->ss[s-1].Nwl)) nat_clear(f,s);
         else f->P[s*(nx+1)]+=SQR(1E-4)*fabs(dt);
     }
     H=zeros(nx,n); v=mat(n,1);
     for (sys=0;sys<NRTK_NSYS;sys++) {
+        double pred,vv,hh,q;
+        int nbad=0,ntest=0,m0=m;
         /* pivot: highest elevation satellite with an active state */
         for (i=0,p=-1;i<n;i++) {
             if (!use[i]||cs[i].sysidx!=sys) continue;
@@ -997,8 +1059,8 @@ static int nat_update(nrtk_baseline_t *bl, gtime_t t, const comsat_t *cs, int n,
         }
         ps=cs[p].sat;
         for (i=0;i<n;i++) {
-            double pred,vv,hh,q;
             s=cs[i].sat;
+            rej[i]=0;
             if (!use[i]||cs[i].sysidx!=sys||i==p) continue;
             if (f->x[s]==0.0) {   /* new state consistent with the DD measurement */
                 set_state(f->x,f->P,nx,s,(y[i]-y[p]+lam[p]*f->x[ps]-(h[i]-h[p])*f->x[0])/lam[i],
@@ -1012,16 +1074,33 @@ static int nat_update(nrtk_baseline_t *bl, gtime_t t, const comsat_t *cs, int n,
             q=SQR(lam[i])*f->P[s*(nx+1)]+SQR(lam[p])*f->P[ps*(nx+1)]-
               2.0*lam[i]*lam[p]*f->P[s+ps*nx]+SQR(hh)*f->P[0]+
               2.0*hh*(lam[i]*f->P[s*nx]-lam[p]*f->P[ps*nx]);
+            if (q<SQR(0.05)) ntest++;          /* converged: the test is meaningful */
             if (fabs(vv)>MAX(0.25,5.0*sqrt(q+var[i]+var[p]))) {
-                nrtk_log(NRTK_LOG_DEBUG,"netpos","bl %d-%d sat=%d native outlier v=%.3f",
-                         bl->ista_m,bl->ista_a,s,vv);
-                nat_clear(f,s);
-                if (bl->ss[s-1].nl) {bl->ss[s-1].nl=0; bl->nrefix++;}
+                rej[i]=1; nbad++;
                 continue;
             }
             H[0+m*nx]=hh; H[s+m*nx]=lam[i]; H[ps+m*nx]=-lam[p];
             v[m]=vv; row_i[m]=i; row_p[m]=p;
             m++;
+        }
+        /* an outlier is an undetected slip: of the satellite itself, or of the
+           pivot when most converged partners fail together. Either way the
+           satellite starts over (the wide-lane may have changed as well) */
+        if (nbad>=2&&2*nbad>ntest) {
+            nrtk_log(NRTK_LOG_DEBUG,"netpos","bl %d-%d sat=%d native pivot outlier (%d of %d partners)",
+                     bl->ista_m,bl->ista_a,ps,nbad,ntest);
+            if (bl->ss[ps-1].nl) bl->nrefix++;
+            reset_sat(bl->ss+ps-1); nat_clear(f,ps); bl->nslip++;
+            memset(H+m0*nx,0,sizeof(double)*nx*(m-m0));   /* this epoch's rows of the system */
+            m=m0;
+            continue;
+        }
+        for (i=0;i<n;i++) {
+            if (!rej[i]) continue;
+            s=cs[i].sat;
+            nrtk_log(NRTK_LOG_DEBUG,"netpos","bl %d-%d sat=%d native outlier",bl->ista_m,bl->ista_a,s);
+            if (bl->ss[s-1].nl) bl->nrefix++;
+            reset_sat(bl->ss+s-1); nat_clear(f,s); bl->nslip++;
         }
     }
     if (m>0) {
@@ -1044,7 +1123,7 @@ static int nat_update(nrtk_baseline_t *bl, gtime_t t, const comsat_t *cs, int n,
 static int resolve_l1(nrtk_baseline_t *bl, gtime_t t, const comsat_t *cs, int n)
 {
     int nx=eng_nx(bl),i,j,k,m,nc,nfixed=0,ncand=0,cand[MAXOBS],ref[NRTK_NSYS];
-    int idx[MAXOBS],rix[MAXOBS],drop,info,nb,accepted=0;
+    int idx[MAXOBS],rix[MAXOBS],cidx[MAXOBS],drop,info,nb,accepted=0;
     double *xc,*Pc,*y,*Q,*F,s[2];
     cons_t *c;
 
@@ -1089,6 +1168,7 @@ static int resolve_l1(nrtk_baseline_t *bl, gtime_t t, const comsat_t *cs, int n)
             idx[nb]=amb_idx(bl,cs[ci].sat); rix[nb]=amb_idx(bl,cs[r].sat);
             q=Pc[idx[nb]*(nx+1)]-2.0*Pc[idx[nb]+rix[nb]*nx]+Pc[rix[nb]*(nx+1)];
             if (q>SQR(NL_MAXSTD)) continue;   /* float not converged */
+            cidx[nb]=k;
             nb++;
         }
         if (nb<1||(nfixed==0&&nb<bl->opt.min_fix)) break;
@@ -1137,7 +1217,35 @@ static int resolve_l1(nrtk_baseline_t *bl, gtime_t t, const comsat_t *cs, int n)
             }
             break;
         }
-        ncand--;   /* partial fixing: drop the lowest elevation candidate */
+        /* partial fixing: remove one satellite of the search set. (Dropping the
+           lowest candidate overall, as before, could remove satellites that were
+           not even in the set because their float had not converged, leaving the
+           set and the ratio unchanged.) Which one depends on the engine:
+             native : the lowest elevation satellite. Its ionosphere-free float
+                      is tightly converged, so a non-integer fraction reflects a
+                      bias (multipath, troposphere) rather than noise, and the
+                      lowest satellite carries the largest one. Dropping the DD
+                      farthest from its integer instead fixed more satellites at
+                      10-13 deg and raised the wrong-fix rate of the HKSC rover
+                      from 0.12% to 1.3% (docs/VALIDATION.md).
+             rtklib : a DD clearly off its integer (> PAR_AMBIG cycles) first -
+                      with per-satellite ionosphere states the float is noisy
+                      and such a DD blocks the ratio test whatever its elevation
+                      (two Hong Kong baselines stayed at 0% and 31% otherwise);
+                      the lowest elevation satellite when none is. */
+        {
+            int worst=-1,low=-1;
+            double dmax=-1.0;
+            for (i=0;i<nb;i++) {
+                double d=info?0.0:fabs(y[i]-F[i]);
+                if (d>dmax) {dmax=d; worst=i;}
+                if (low<0||cidx[i]>cidx[low]) low=i;
+            }
+            if (low<0) break;
+            if (bl->engine!=NRTK_ENGINE_RTKLIB||dmax<PAR_AMBIG) worst=low;
+            for (k=cidx[worst];k<ncand-1;k++) cand[k]=cand[k+1];
+            ncand--;
+        }
     }
     free(y); free(Q); free(F); free(xc); free(Pc);
     return accepted;
@@ -1180,7 +1288,10 @@ static void check_held(nrtk_baseline_t *bl, const comsat_t *cs, int n)
             for (k=0;k<nk;k++) {
                 dd=rtk?x[IB_(cs[i].sat,k,&bl->rtk.opt)]-x[IB_(cs[a].sat,k,&bl->rtk.opt)]:
                        x[cs[i].sat]-x[cs[a].sat];
-                if (fabs(dd-(k==0?st->N1-sa->N1:N2of(st)-N2of(sa)))>0.3) {
+                /* the float is closer to another integer. (0.5, not less: the
+                   ratio test accepts floats up to ~0.37 cycles off, a tighter
+                   limit here made such fixes flap every epoch) */
+                if (fabs(dd-(k==0?st->N1-sa->N1:N2of(st)-N2of(sa)))>0.5) {
                     nrtk_log(NRTK_LOG_DEBUG,"netpos","bl %d-%d sat=%d unfix: held f%d dd=%.3f N=%.0f",
                              bl->ista_m,bl->ista_a,cs[i].sat,k,dd,k==0?st->N1-sa->N1:N2of(st)-N2of(sa));
                     st->nl=0; nbad++; bl->nrefix++;
@@ -1194,6 +1305,54 @@ static void check_held(nrtk_baseline_t *bl, const comsat_t *cs, int n)
             bl->ss[cs[a].sat-1].nl=0;
         }
     }
+}
+/* cycle slip repair ------------------------------------------------------------------
+ * A jump of the DD residuals of a held satellite by an integer number of cycles
+ * on every frequency is a slip the detectors missed. Instead of starting the
+ * satellite over, its SD integers, MW averages and float states are shifted by
+ * the jump and the residuals stay continuous. */
+static int jump_integers(const comsat_t *c, const double *dj, int has3, double *dn)
+{
+    int k,n=has3?3:2;
+    for (k=0;k<n;k++) {
+        double x=dj[k]/(CLIGHT/c->m->freq[k]);
+        dn[k]=ROUND(x);
+        if (fabs(x-dn[k])>0.15) return 0;
+    }
+    if (!has3) dn[2]=0.0;
+    return dn[0]!=0.0||dn[1]!=0.0;
+}
+static void repair_slip(nrtk_baseline_t *bl, int sat, const double *dn, int has3)
+{
+    satst_t *st=bl->ss+sat-1;
+    double dwl=dn[0]-dn[1],dewl=dn[1]-dn[2];
+    int f,j;
+
+    st->N1+=dn[0];
+    st->Nwl+=dwl;
+    if (dwl!=0.0) {         /* shift the MW sums: sum (x+d)^2 = sum x^2 + 2d sum x + n d^2 */
+        st->mw2[0]+=2.0*dwl*st->mw[0]+st->nmw[0]*dwl*dwl;
+        st->mw[0]+=st->nmw[0]*dwl;
+    }
+    if (st->ewl) {
+        if (has3) {
+            st->Newl+=dewl;
+            if (dewl!=0.0) {
+                st->mw2[1]+=2.0*dewl*st->mw[1]+st->nmw[1]*dewl*dewl;
+                st->mw[1]+=st->nmw[1]*dewl;
+            }
+        }
+        else {st->ewl=0; reset_mw(st,1);}  /* third frequency unknown */
+    }
+    st->Nwl_nat=st->Nwl;
+    if (bl->engine==NRTK_ENGINE_RTKLIB) {
+        for (f=0;f<bl->rtk.opt.nf&&f<3;f++) {
+            if (f==2&&!has3) break;
+            j=IB_(sat,f,&bl->rtk.opt);
+            if (bl->rtk.x[j]!=0.0) bl->rtk.x[j]+=dn[f];
+        }
+    }
+    else if (bl->nat.x[sat]!=0.0) bl->nat.x[sat]+=dn[0];   /* y shifts by lam_NL*dn1 */
 }
 /* statistics ---------------------------------------------------------------------*/
 static void update_stat(nrtk_baseline_t *bl, gtime_t t, int fixed)
@@ -1215,7 +1374,9 @@ extern int nrtk_bl_process(nrtk_baseline_t *bl, const nrtk_staepoch_t *em,
                            nrtk_blepoch_t *out)
 {
     comsat_t cs[MAXOBS];
-    int slip[MAXOBS],i,k,n,sys,nfix=0,nwl=0,nslip=0,ok;
+    double dj[MAXOBS][3];
+    int slip[MAXOBS],jump[MAXOBS],tested[MAXOBS],has3[MAXOBS],oidx[MAXOBS];
+    int i,k,n,sys,nfix=0,nwl=0,nslip=0,ok,ok3;
 
     memset(out,0,sizeof(*out));
     out->time=em->time;
@@ -1256,10 +1417,12 @@ extern int nrtk_bl_process(nrtk_baseline_t *bl, const nrtk_staepoch_t *em,
         int r=anchor(bl,cs,n,sys,2);
         out->refsat[sys]=r>=0?cs[r].sat:0;
     }
+    for (i=0;i<n;i++) {oidx[i]=-1; jump[i]=tested[i]=0;}
     for (i=0;i<n&&out->ns<NRTK_BL_MAXSAT;i++) {
         satst_t *st=bl->ss+cs[i].sat-1;
-        nrtk_blsat_t *o=out->sat+out->ns++;
+        nrtk_blsat_t *o=out->sat+out->ns;
         int r=-1;
+        oidx[i]=out->ns++;
         o->sat=(uint8_t)cs[i].sat; o->sysidx=(int8_t)cs[i].sysidx;
         o->wlfixed=(uint8_t)st->wl; o->ewlfixed=(uint8_t)st->ewl;
         o->slip=(uint8_t)slip[i];
@@ -1268,7 +1431,9 @@ extern int nrtk_bl_process(nrtk_baseline_t *bl, const nrtk_staepoch_t *em,
         if (st->nl) st->nfixep++; else st->nfixep=0;
         o->nfixep=st->nfixep;
         for (k=0;k<n;k++) if (cs[k].sat==out->refsat[cs[i].sysidx]) {r=k; break;}
-        if (!st->nl||r<0) continue;
+        /* a held satellite without both phases this epoch has no residual to
+           offer (it stays held, the float state is kept) */
+        if (!st->nl||r<0||!cs[i].ok2) continue;
         o->fixed=1;
         o->newfix=(uint8_t)st->newfix;
         o->isref=(uint8_t)(r==i);
@@ -1279,7 +1444,6 @@ extern int nrtk_bl_process(nrtk_baseline_t *bl, const nrtk_staepoch_t *em,
             double pa[3],pm[3];
             for (k=0;k<bl->nf&&k<NRTK_NPROC;k++) {
                 if (k==2&&!(st->ewl&&sr->ewl&&cs[i].ok3&&cs[r].ok3)) continue;
-                if (k<2&&!cs[i].ok2) continue;
                 o->dd_res[k]=dd_phase_res(cs+i,cs+r,k,Ns[k],Nr[k]);
                 if (cs[i].a->obs.P[k]!=0.0&&cs[i].m->obs.P[k]!=0.0&&
                     cs[r].a->obs.P[k]!=0.0&&cs[r].m->obs.P[k]!=0.0) {
@@ -1295,19 +1459,119 @@ extern int nrtk_bl_process(nrtk_baseline_t *bl, const nrtk_staepoch_t *em,
                 (nrtk_trop_slant(em->time,pa,cs[r].a->azel)-nrtk_trop_slant(em->time,pm,cs[r].m->azel));
             /* continuity of the DD residuals of held satellites: an undetected
                slip or a wrong integer moves them by a wavelength */
-            if (st->res_ref==cs[r].sat&&!st->newfix&&
-                (fabs(o->dd_res[0]-st->res_prev[0])>JUMP_RES||
-                 fabs(o->dd_res[1]-st->res_prev[1])>JUMP_RES)) {
-                nrtk_log(NRTK_LOG_DEBUG,"netpos","bl %d-%d sat=%d unfix: jump d1=%.3f d2=%.3f ref=%d",
-                         bl->ista_m,bl->ista_a,cs[i].sat,o->dd_res[0]-st->res_prev[0],
-                         o->dd_res[1]-st->res_prev[1],cs[r].sat);
-                st->nl=0; o->fixed=0; nfix--;
-                bl->nrefix++;
+            ok3=bl->nf>=3&&st->ewl&&sr->ewl&&cs[i].ok3&&cs[r].ok3;   /* dd_res[2] computed */
+            if (st->res_ref==cs[r].sat&&!st->newfix) {
+                tested[i]=1;
+                has3[i]=ok3&&st->res_has3;
+                for (k=0;k<3;k++) dj[i][k]=k<2||has3[i]?o->dd_res[k]-st->res_prev[k]:0.0;
+                if (fabs(dj[i][0])>JUMP_RES||fabs(dj[i][1])>JUMP_RES) {
+                    jump[i]=1;
+                    nrtk_log(NRTK_LOG_DEBUG,"netpos","bl %d-%d sat=%d jump d1=%.3f d2=%.3f ref=%d",
+                             bl->ista_m,bl->ista_a,cs[i].sat,dj[i][0],dj[i][1],cs[r].sat);
+                }
             }
-            st->res_prev[0]=o->dd_res[0]; st->res_prev[1]=o->dd_res[1];
+            for (k=0;k<3;k++) st->res_prev[k]=o->dd_res[k];
+            st->res_has3=ok3;
             st->res_ref=cs[r].sat;
         }
     }
+    /* a jump is a slip that escaped the detectors: of the satellite, or of the
+       reference when most tested partners jump together. A jump by whole
+       cycles on every frequency is repaired (integers, MW averages and float
+       shifted; the residuals stay continuous). Anything else starts the
+       satellite over like a detected slip: the wide-lane may have changed and
+       the float is pinned to the old integer; for a reference the system's
+       residuals of this epoch are unusable. */
+    for (sys=0;sys<NRTK_NSYS;sys++) {
+        int r=-1,nt=0,nj=0,h3=1;
+        double dn[3],dnr[3];
+        for (k=0;k<n;k++) if (cs[k].sat==out->refsat[sys]) {r=k; break;}
+        if (r<0) continue;
+        for (i=0;i<n;i++) if (cs[i].sysidx==sys&&tested[i]) {nt++; nj+=jump[i];}
+        if (nj==0) continue;
+        if (nj>=2&&2*nj>nt) {
+            /* reference slipped: every tested partner jumped by the same integers
+               (the third frequency from the partners that have it) */
+            int agree=nj==nt,first=1,n3=0;
+            dnr[0]=dnr[1]=dnr[2]=0.0;
+            for (i=0;i<n&&agree;i++) {
+                double neg[3];
+                if (cs[i].sysidx!=sys||!jump[i]) continue;
+                for (k=0;k<3;k++) neg[k]=-dj[i][k];
+                if (!jump_integers(cs+i,neg,has3[i],dn)) {agree=0; break;}
+                if (first) {dnr[0]=dn[0]; dnr[1]=dn[1]; first=0;}
+                else if (dn[0]!=dnr[0]||dn[1]!=dnr[1]) agree=0;
+                if (has3[i]) {
+                    if (n3==0) dnr[2]=dn[2]; else if (dn[2]!=dnr[2]) agree=0;
+                    n3++;
+                }
+            }
+            h3=n3>0;
+            if (agree) {
+                nrtk_log(NRTK_LOG_DEBUG,"netpos","bl %d-%d sat=%d reference slip repaired (%.0f,%.0f,%.0f) from %d partners",
+                         bl->ista_m,bl->ista_a,cs[r].sat,dnr[0],dnr[1],dnr[2],nj);
+                repair_slip(bl,cs[r].sat,dnr,h3);
+                bl->nslip++;
+                if (oidx[r]>=0) {           /* VRS lock of the reference restarts */
+                    out->sat[oidx[r]].slip=1;
+                    out->sat[oidx[r]].ewlfixed=(uint8_t)bl->ss[cs[r].sat-1].ewl;
+                }
+                for (i=0;i<n;i++) {
+                    nrtk_blsat_t *o;
+                    satst_t *st=bl->ss+cs[i].sat-1;
+                    if (cs[i].sysidx!=sys||oidx[i]<0||i==r) continue;
+                    o=out->sat+oidx[i];
+                    if (!o->fixed) continue;
+                    for (k=0;k<3;k++) {
+                        if (k==2&&(!h3||o->dd_res[2]==0.0)) {o->dd_res[2]=0.0; continue;}
+                        o->dd_res[k]+=CLIGHT/cs[i].m->freq[k]*dnr[k];
+                    }
+                    nrtk_split_iono(cs[i].m->freq[0],cs[i].m->freq[1],o->dd_res[0],o->dd_res[1],
+                                    &o->dd_iono,&o->dd_nondisp);
+                    for (k=0;k<3;k++) st->res_prev[k]=o->dd_res[k];
+                    if (!h3) st->res_has3=0;
+                }
+                continue;
+            }
+            nrtk_log(NRTK_LOG_DEBUG,"netpos","bl %d-%d sat=%d unfix: reference jump (%d of %d partners)",
+                     bl->ista_m,bl->ista_a,cs[r].sat,nj,nt);
+            reset_sat(bl->ss+cs[r].sat-1); reset_amb(bl,cs[r].sat);
+            bl->nrefix++; bl->nslip++;
+            for (i=0;i<n;i++) {
+                if (cs[i].sysidx!=sys||oidx[i]<0) continue;
+                out->sat[oidx[i]].fixed=out->sat[oidx[i]].isref=out->sat[oidx[i]].newfix=0;
+            }
+            continue;
+        }
+        for (i=0;i<n;i++) {
+            nrtk_blsat_t *o;
+            satst_t *st=bl->ss+cs[i].sat-1;
+            if (cs[i].sysidx!=sys||!jump[i]) continue;
+            o=out->sat+oidx[i];
+            if (jump_integers(cs+i,dj[i],has3[i],dn)) {
+                nrtk_log(NRTK_LOG_DEBUG,"netpos","bl %d-%d sat=%d slip repaired (%.0f,%.0f,%.0f)",
+                         bl->ista_m,bl->ista_a,cs[i].sat,dn[0],dn[1],dn[2]);
+                repair_slip(bl,cs[i].sat,dn,has3[i]);
+                bl->nslip++;
+                o->slip=1;                      /* the VRS lock time of this satellite restarts */
+                for (k=0;k<3;k++) {
+                    if (k==2&&(!has3[i]||o->dd_res[2]==0.0)) {o->dd_res[2]=0.0; continue;}
+                    o->dd_res[k]-=CLIGHT/cs[i].m->freq[k]*dn[k];
+                }
+                nrtk_split_iono(cs[i].m->freq[0],cs[i].m->freq[1],o->dd_res[0],o->dd_res[1],
+                                &o->dd_iono,&o->dd_nondisp);
+                for (k=0;k<3;k++) st->res_prev[k]=o->dd_res[k];
+                if (!has3[i]) st->res_has3=0;
+                o->ewlfixed=(uint8_t)st->ewl;
+                continue;
+            }
+            nrtk_log(NRTK_LOG_DEBUG,"netpos","bl %d-%d sat=%d unfix: jump",bl->ista_m,bl->ista_a,cs[i].sat);
+            reset_sat(st); reset_amb(bl,cs[i].sat);
+            bl->nrefix++; bl->nslip++;
+            o->fixed=o->newfix=0;
+        }
+    }
+    for (i=nfix=0;i<out->ns;i++) nfix+=out->sat[i].fixed;
     out->nsat=n;
     out->nfixed=nfix;
     out->nwl=nwl;

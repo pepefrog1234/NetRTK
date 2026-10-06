@@ -162,3 +162,20 @@ TEST(Rtcm, LockTimeResetOnSlipFlag)
     free_rtcm(r); delete r;
     nrtk_rtcmout_free(&o);
 }
+
+/* DF025..DF027 are 0.1 mm integers: the encoder rounds (no truncation bias) */
+TEST(Rtcm, Encode1006RoundsPosition)
+{
+    double pos[3]={-3001875.57036,4946937.83644,2674117.01667};   /* x.xxxx6, x.xxxx4, x.xxxx7 */
+    uint8_t buf[64];
+    int n=nrtk_rtcm_encode_1006(1,pos,0.0,1,0,0xF,buf,sizeof(buf));
+    ASSERT_GT(n,0);
+    rtcm_t *r=new rtcm_t; init_rtcm(r);
+    int ret=0;
+    for (int i=0;i<n;i++) ret=input_rtcm3(r,buf[i]);
+    EXPECT_EQ(ret,5);
+    EXPECT_NEAR(r->sta.pos[0],-3001875.5704,1E-6);
+    EXPECT_NEAR(r->sta.pos[1], 4946937.8364,1E-6);
+    EXPECT_NEAR(r->sta.pos[2], 2674117.0167,1E-6);
+    free_rtcm(r); delete r;
+}

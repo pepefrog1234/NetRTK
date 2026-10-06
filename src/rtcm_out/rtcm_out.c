@@ -7,6 +7,7 @@
 #include "nrtk/rtcm_out.h"
 
 #define RTCM3PREAMB 0xD3
+#define ROUND(x)    floor((x)+0.5)
 
 extern int nrtk_rtcmout_init(nrtk_rtcmout_t *o, int staid, int msm,
                              const double *pos, int non_physical)
@@ -80,12 +81,12 @@ extern int nrtk_rtcm_encode_1006(int staid, const double *pos, double hgt,
     setbitu(msg,i, 1,0); i+=1;                   /* DF023 GLONASS */
     setbitu(msg,i, 1,(sysmask&(1<<NRTK_GAL))?1:0); i+=1; /* DF024 Galileo */
     setbitu(msg,i, 1,non_physical?1:0); i+=1;    /* DF141 reference-station indicator */
-    set38bits(msg,i,pos[0]/0.0001); i+=38;       /* DF025 ARP ECEF-X */
+    set38bits(msg,i,ROUND(pos[0]/0.0001)); i+=38; /* DF025 ARP ECEF-X (0.1 mm) */
     setbitu(msg,i, 1,1); i+=1;                   /* DF142 single receiver oscillator */
     setbitu(msg,i, 1,0); i+=1;                   /* DF001 reserved */
-    set38bits(msg,i,pos[1]/0.0001); i+=38;       /* DF026 ARP ECEF-Y */
+    set38bits(msg,i,ROUND(pos[1]/0.0001)); i+=38; /* DF026 ARP ECEF-Y */
     setbitu(msg,i, 2,0); i+=2;                   /* DF364 quarter cycle indicator */
-    set38bits(msg,i,pos[2]/0.0001); i+=38;       /* DF027 ARP ECEF-Z */
+    set38bits(msg,i,ROUND(pos[2]/0.0001)); i+=38; /* DF027 ARP ECEF-Z */
     setbitu(msg,i,16,h); i+=16;                  /* DF028 antenna height */
     return frame(msg,i,buf,size);
 }

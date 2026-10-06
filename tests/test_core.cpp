@@ -229,3 +229,29 @@ TEST(Antenna, ParseAndCorrect)
     EXPECT_NEAR(nrtk_ant_dr(nullptr,SYS_GPS,FREQL1,azel,del,1),-0.1,1E-12);
     nrtk_atx_free(&atx);
 }
+
+/* ionosphere activity monitor: the rate is taken between the oldest and the
+ * newest sample of the window, so it must work at 1 s, 5 s and 10 s sampling */
+TEST(Atmos, IonoMonitorSparseSampling)
+{
+    for (double step: {1.0,5.0,10.0}) {
+        nrtk_ionomon_t *m=nrtk_ionomon_create(60.0);
+        gtime_t t0=epoch2time(std::vector<double>{2026,9,20,4,0,0}.data());
+        nrtk_blepoch_t b;
+        for (int k=0;k*step<=120.0;k++) {
+            memset(&b,0,sizeof(b));
+            b.valid=1; b.sta_m=0; b.sta_a=1; b.time=timeadd(t0,k*step);
+            b.refsat[NRTK_GPS]=1;
+            b.ns=2;
+            b.sat[0].sat=1; b.sat[0].sysidx=NRTK_GPS; b.sat[0].fixed=1; b.sat[0].isref=1;
+            b.sat[1].sat=2; b.sat[1].sysidx=NRTK_GPS; b.sat[1].fixed=1;
+            b.sat[1].azel_m[1]=(float)(45.0*D2R);
+            b.sat[1].dd_iono=0.002*k*step;          /* 2 mm/s = 0.12 m/min */
+            nrtk_ionomon_add(m,&b);
+        }
+        EXPECT_NEAR(nrtk_ionomon_rate(m,0,1),0.12,0.01)<<"step "<<step;
+        EXPECT_NEAR(nrtk_ionomon_rate(m,1,0),0.12,0.01);   /* either station order */
+        EXPECT_EQ(nrtk_ionomon_rate(m,0,2),0.0);
+        nrtk_ionomon_free(m);
+    }
+}

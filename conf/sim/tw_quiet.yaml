@@ -37,4 +37,9 @@ trop:
   gradient_m: 0.0005
 orbit_error_rac_m: [0.3, 1.0, 0.6]
 noise: {phase_m: 0.0015, code_m: 0.15}
-slip_rate: 2.0e-5
+slip_rate: 2.0e-5          # flagged (LLI) slips per signal per epoch
+# slip_unflagged_rate: 0   # small slips (+-1..slip_unflagged_max cycles) the receiver does not flag
+# slip_unflagged_max: 2
+# slip_common_rate: 0      # unflagged slips of the same size on all signals of a satellite
+#                          # (invisible to geometry-free and Melbourne-Wubbena detectors)
+# per station: slip_scale: 0.0 keeps that station free of slips (e.g. the leave-out rover)

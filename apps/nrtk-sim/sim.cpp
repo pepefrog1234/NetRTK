@@ -46,6 +46,7 @@ struct Station {
     double llh[3]={0}, pos[3]={0}, antdel[3]={0};
     bool free_clock=false;
     double mp_scale=1.0;
+    double slip_scale=1.0;      /* multiplies the slip rates for this station (0: none) */
     double zwd_rw=0.0, pres_off=0.0;
     double clk=0.0, clk_drift=0.0;
     double bias_code[NRTK_NSYS][8]={{0}}, bias_phase[NRTK_NSYS][8]={{0}};
@@ -75,6 +76,10 @@ struct Scenario {
     /* orbit error amplitudes RAC (m) */
     double orb[3]={0.3,1.0,0.6};
     double noise_ph=0.0015, noise_code=0.15, slip_rate=2E-5, elmin=5.0;
+    double slip_unflagged_rate=0.0; /* small slips without LLI (receiver misses them) */
+    int    slip_unflagged_max=2;    /* max |cycles| of an unflagged slip */
+    double slip_common_rate=0.0;    /* unflagged slips of the same size on all signals of
+                                       a satellite (invisible to geometry-free and MW) */
     double ref_lat=24.8, ref_lon=121.1;
     double truth_int=10.0;      /* truth output interval (s), 0: off */
 };
@@ -355,6 +360,9 @@ Scenario load(const std::string &file)
     YAML::Node no=y["noise"];
     sc.noise_ph=get(no,"phase_m",sc.noise_ph); sc.noise_code=get(no,"code_m",sc.noise_code);
     sc.slip_rate=get(y,"slip_rate",sc.slip_rate);
+    sc.slip_unflagged_rate=get(y,"slip_unflagged_rate",sc.slip_unflagged_rate);
+    sc.slip_unflagged_max=get(y,"slip_unflagged_max",sc.slip_unflagged_max);
+    sc.slip_common_rate=get(y,"slip_common_rate",sc.slip_common_rate);
     sc.ref_lat=get(y,"ref_lat",sc.ref_lat); sc.ref_lon=get(y,"ref_lon",sc.ref_lon);
     sc.truth_int=get(y,"truth_interval_s",sc.truth_int);
     for (auto n:y["stations"]) {
@@ -365,6 +373,7 @@ Scenario load(const std::string &file)
         s.antdel[2]=get<double>(n,"arp_height_m",0.0);
         s.free_clock=get<std::string>(n,"clock","steered")=="free";
         s.mp_scale=get<double>(n,"multipath",1.0);
+        s.slip_scale=get<double>(n,"slip_scale",1.0);
         double pos[3]={s.llh[0]*D2R,s.llh[1]*D2R,s.llh[2]};
         pos2ecef(pos,s.pos);
         sc.sta.push_back(s);
@@ -529,7 +538,7 @@ int main(int argc, char **argv)
     std::vector<obsd_t> obs(MAXOBS);
     double zwd_common=0.0;
     long nep=(long)(sc.dur/sc.tint+0.5);
-    long nslip=0;
+    long nslip=0,nunflagged=0;
 
     for (long ie=0;ie<nep;ie++) {
         gtime_t t=timeadd(sc.t0,ie*sc.tint);
@@ -601,6 +610,11 @@ int main(int argc, char **argv)
                 obsd_t &o=obs[n];
                 memset(&o,0,sizeof(o));
                 o.time=t; o.sat=sat; o.rcv=1;
+                double common_slip=0.0;
+                if (!rising&&unif()<sc.slip_common_rate*s.slip_scale) {
+                    double k=floor(unif()*sc.slip_unflagged_max)+1.0;
+                    common_slip=unif()<0.5?k:-k; nslip++; nunflagged++;
+                }
                 for (size_t j=0;j<sigs.size()&&j<NRTK_MAXSIG;j++) {
                     uint8_t code=obs2code(sigs[j].c_str());
                     double f=nrtk_code2freq(sys,code), lam=CLIGHT/f, mu=SQR(FREQL1/f);
@@ -614,9 +628,15 @@ int main(int argc, char **argv)
                     double Lm=geo-mu*I+mp_l*(j==0?1.0:1.2)+ph_noise;
                     if (rising) tk.amb[j]=floor((P-Lm)/lam+0.5)+floor(unif()*20-10);
                     o.LLI[j]=0;
-                    if (!rising&&unif()<sc.slip_rate) {
+                    if (!rising&&unif()<sc.slip_rate*s.slip_scale) {
                         tk.amb[j]+=floor(unif()*20.0-10.0)+1.0; o.LLI[j]|=LLI_SLIP; nslip++;
                     }
+                    else if (!rising&&unif()<sc.slip_unflagged_rate*s.slip_scale) {
+                        /* small slip the receiver does not flag: +-1..max cycles */
+                        double k=floor(unif()*sc.slip_unflagged_max)+1.0;
+                        tk.amb[j]+=unif()<0.5?k:-k; nslip++; nunflagged++;
+                    }
+                    tk.amb[j]+=common_slip;
                     o.code[j]=code;
                     o.P[j]=P;
                     o.L[j]=Lm/lam+tk.amb[j]+bp;
@@ -634,7 +654,7 @@ int main(int argc, char **argv)
         }
         if (ie%600==0) fprintf(stderr,"\r  epoch %ld/%ld",ie,nep);
     }
-    fprintf(stderr,"\r  %ld epochs, %ld slips                       \n",nep,nslip);
+    fprintf(stderr,"\r  %ld epochs, %ld slips (%ld unflagged)          \n",nep,nslip,nunflagged);
     for (auto fp:fps) fclose(fp);
     for (auto fp:ftruth) if (fp) fclose(fp);
 

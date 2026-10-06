@@ -48,6 +48,8 @@ typedef struct {
     uint8_t nbl;                /* baselines used */
     uint8_t extrap;             /* VRS outside the hull of the used stations */
     uint8_t newfix;             /* a contributing ambiguity was (re)fixed */
+    uint8_t slip;               /* the satellite slipped at a contributing station (slip
+                                   repaired in the network): the VRS lock time must restart */
     uint32_t blmask;            /* contributing baselines (bit i: cell baseline i) */
     double  dd_iono;            /* DD ionosphere master->VRS (L1, m) */
     double  dd_nondisp;         /* DD non-dispersive master->VRS (m) */

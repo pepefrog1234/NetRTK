@@ -134,6 +134,8 @@ extern int nrtk_vrs_generate(nrtk_vrs_t *v, const nrtk_staepoch_t *mep,
             const prevsat_t *p=v->prev+s->sat-1;
             if (!p->valid) reset=1;                       /* new satellite / new VRS */
             else if (c->newfix) reset=1;                  /* network (re)fix */
+            else if (c->slip) reset=1;                    /* slip at a station, repaired in the network:
+                                                             the master's phase may have jumped */
             else if (c->blmask!=p->blmask) reset=1;       /* interpolation basis changed */
             else {
                 /* jump of the correction actually applied to each processing
