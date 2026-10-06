@@ -47,14 +47,15 @@
 #define MIN(x,y)   ((x)<=(y)?(x):(y))
 #define MAX(x,y)   ((x)>=(y)?(x):(y))
 #define ROUND(x)   floor((x)+0.5)
-#define MAXGAP     10.0         /* max data gap keeping ambiguities (s) */
+#define MAXGAP     10.0         /* max data gap keeping ambiguities (s), or 3 epochs */
 #define VAR_COND   1E-6         /* conditioning constraint variance (cyc^2) */
 #define NL_MAXSTD  0.15         /* max float std of a DD L1 ambiguity to fix (cyc) */
 #define PAR_AMBIG  0.25         /* partial fixing: drop a DD this far from its integer first (cyc) */
 #define REL_ZWD    0.05         /* a-priori std of the aux ZWD w.r.t. the model (m) */
 #define DZWD_PRIOR 0.05         /* prior std of the relative ZWD in validation (m) */
 #define DZWD_MAX   0.12         /* implausible relative ZWD (m) */
-#define JUMP_RES   0.07         /* max epoch-to-epoch change of a DD residual (m) */
+#define JUMP_RES   0.07         /* max epoch-to-epoch change of a DD residual (m) at 1 s,
+                                   relaxed like the geometry-free test: *(1+dt/30) */
 #define VAR_NEWAMB 1E4          /* initial variance of a native L1 ambiguity (cyc^2) */
 #define HELD_TAU   120.0        /* averaging time of the held-fix model residual (s) */
 #define HELD_MIN   60.0         /* min averaging time before the mean is tested (s) */
@@ -102,6 +103,8 @@ struct nrtk_baseline {
     natf_t  nat;                /* native engine */
     satst_t ss[MAXSAT];
     double  ratio;
+    gtime_t tprev;              /* previous processed epoch */
+    double  dt_nom;             /* nominal epoch interval (s), 0: unknown */
     double  dzwd;               /* relative ZWD aux-master w.r.t. the model (m) */
     int     dzwd_ok;
     /* statistics */
@@ -265,6 +268,7 @@ extern void nrtk_bl_reset(nrtk_baseline_t *bl)
     memset(bl->ss,0,sizeof(bl->ss));
     bl->trop_init=0;
     bl->dzwd_ok=0;
+    bl->tprev.time=0;
 }
 /* observation combinations ------------------------------------------------------*/
 static int has_slots(const nrtk_satdata_t *s, int a, int b)
@@ -362,7 +366,7 @@ static void detect_slips(nrtk_baseline_t *bl, gtime_t t, comsat_t *cs, int n,
                              st->code[1][j]!=cs[i].m->obs.code[j])) lli|=LLI_SLIP;
         }
         if (lli&LLI_SLIP) slip[i]=1;
-        if (st->lock>0&&dt>MAXGAP) slip[i]=1;
+        if (st->lock>0&&dt>MAX(MAXGAP,3.0*bl->dt_nom)) slip[i]=1;   /* data gap */
 
         gf=gf_m(cs[i].a)-gf_m(cs[i].m);
         if (st->lock>0&&dt>0.0&&bl->opt.gf_slip>0.0) {
@@ -855,7 +859,7 @@ static void monitor_held(nrtk_baseline_t *bl, gtime_t t, const comsat_t *cs, int
             if (fabs(e)>2.0*bl->opt.max_res) st->nbad++; else st->nbad=0;
 
             dt=st->eavg_t.time?timediff(t,st->eavg_t):1E9;
-            if (st->eavg_w>0.0&&dt<=30.0&&st->eavg_anc!=cs[a].sat) {
+            if (st->eavg_w>0.0&&dt<=MAX(30.0,3.0*bl->dt_nom)&&st->eavg_anc!=cs[a].sat) {
                 /* anchor changed: re-reference the mean with the new anchor's
                    own mean w.r.t. the old one, DD(i,new) = DD(i,old) - DD(new,old),
                    instead of restarting the average (a wrong old anchor cancels) */
@@ -867,7 +871,7 @@ static void monitor_held(nrtk_baseline_t *bl, gtime_t t, const comsat_t *cs, int
                 }
                 else st->eavg_w=0.0;
             }
-            if (st->eavg_w<=0.0||dt>30.0) {
+            if (st->eavg_w<=0.0||dt>MAX(30.0,3.0*bl->dt_nom)) {
                 st->eavg=e; st->eavg_w=1E-9; st->eavg_anc=cs[a].sat;
             }
             else {
@@ -1377,12 +1381,22 @@ extern int nrtk_bl_process(nrtk_baseline_t *bl, const nrtk_staepoch_t *em,
     double dj[MAXOBS][3];
     int slip[MAXOBS],jump[MAXOBS],tested[MAXOBS],has3[MAXOBS],oidx[MAXOBS];
     int i,k,n,sys,nfix=0,nwl=0,nslip=0,ok,ok3;
+    double jump_thr;
 
     memset(out,0,sizeof(*out));
     out->time=em->time;
     out->sta_m=bl->ista_m; out->sta_a=bl->ista_a;
     out->length=bl->length;
     out->dt_age=timediff(em->time,ea->time);
+
+    /* nominal epoch interval: the smallest spacing seen (gap and jump
+       thresholds scale with it, 30 s data would otherwise slip every epoch) */
+    if (bl->tprev.time) {
+        double d=timediff(em->time,bl->tprev);
+        if (d>0.0&&(bl->dt_nom<=0.0||d<0.9*bl->dt_nom)) bl->dt_nom=d;
+    }
+    bl->tprev=em->time;
+    jump_thr=JUMP_RES*(1.0+bl->dt_nom/30.0);
 
     if (fabs(out->dt_age)>DTTOL||em->ns<4||ea->ns<4) {
         update_stat(bl,em->time,0);
@@ -1464,7 +1478,7 @@ extern int nrtk_bl_process(nrtk_baseline_t *bl, const nrtk_staepoch_t *em,
                 tested[i]=1;
                 has3[i]=ok3&&st->res_has3;
                 for (k=0;k<3;k++) dj[i][k]=k<2||has3[i]?o->dd_res[k]-st->res_prev[k]:0.0;
-                if (fabs(dj[i][0])>JUMP_RES||fabs(dj[i][1])>JUMP_RES) {
+                if (fabs(dj[i][0])>jump_thr||fabs(dj[i][1])>jump_thr) {
                     jump[i]=1;
                     nrtk_log(NRTK_LOG_DEBUG,"netpos","bl %d-%d sat=%d jump d1=%.3f d2=%.3f ref=%d",
                              bl->ista_m,bl->ista_a,cs[i].sat,dj[i][0],dj[i][1],cs[r].sat);

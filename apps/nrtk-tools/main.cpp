@@ -83,6 +83,8 @@ int obscmp(int argc, char **argv)
     std::vector<Arc> arcs;
     std::map<std::pair<int,uint8_t>,gtime_t> last;
     long nep=0;
+    gtime_t tprev={0};
+    double dt_nom=0.0;          /* epoch interval of the files (arc gap threshold scales with it) */
 
     for (;;) {
         gtime_t t=nrtk_rnxsrc_peek(&A);
@@ -92,6 +94,12 @@ int obscmp(int argc, char **argv)
         if (na<=0) continue;
         if (nb<=0) continue;
         nep++;
+        if (tprev.time) {
+            double d=timediff(t,tprev);
+            if (d>0.0&&(dt_nom<=0.0||d<0.9*dt_nom)) dt_nom=d;
+        }
+        tprev=t;
+        const double gap=std::max(5.0,2.5*dt_nom);
         double rr[3],pos[3];
         nrtk_sta_pos(sta,t,rr);
         nrtk_tide_pos(t,rr,rr);
@@ -151,7 +159,7 @@ int obscmp(int argc, char **argv)
             auto key=std::make_tuple(sat,c,r);
             auto lk=std::make_pair(sat,c);
             bool newarc=!cur.count(key)||s.slip||q.slip||
-                        (last.count(lk)&&timediff(t,last[lk])>5.0);
+                        (last.count(lk)&&timediff(t,last[lk])>gap);
             /* slips not flagged in either file: DD phase jump between epochs */
             if (!newarc) {
                 const Arc &ar=arcs[cur[key]];

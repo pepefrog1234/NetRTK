@@ -103,6 +103,26 @@ tools/hkdata/fetch_hk.sh 2026 270
 ./build/bin/nrtk-gen -c conf/hk/hk_1s_sparse.yaml
 ```
 
+### 2b. 台灣資料（中央氣象署 GDMS）
+
+GDMS 的 RINEX 2.11 日檔（30 s）可直接讀取（`.gz` 由 RTKLIB 解壓）。檔頭座標只有公尺級
+（NetR9 站）或接收機自算（Alloy 站），需先以資料本身求站間相對座標：
+
+```bash
+tools/twdata/extract_gdms.sh GDMSdata.tgz 2026 kyi2 hsin bal2 plin wali tan2 yame ksh2 lnk2 wuku zuzh anbu saj2
+```
+
+```bash
+./build/bin/nrtk-net -c conf/tw/tw_north_30s_all.yaml -o results/tw_adjust --sat-csv
+```
+
+```bash
+python3 tools/twdata/adjust_coords.py -c conf/tw/tw_north_30s_all.yaml -r results/tw_adjust --fix LNK2 --apply conf/tw/tw_north_30s_all.yaml
+```
+
+重複到修正量 < 1 mm；`conf/tw/tw_north_30s.yaml` 是只保留環狀 6 站、內部 7 站留一的驗證設定
+（`tools/twdata/config_for_day.py` 產生其他日期的設定）。結果見 `docs/VALIDATION.md` 第 9 節。
+
 ### 3. 即時伺服器
 
 ```bash

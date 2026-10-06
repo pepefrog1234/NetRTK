@@ -231,10 +231,10 @@ extern "C" void nrtk_ionomon_add(nrtk_ionomon_t *m, const nrtk_blepoch_t *b)
         int ref=b->refsat[s->sysidx];
         auto &q=st.sat[s->sat];
         if (!s->fixed||s->isref||!ref) {q.clear(); continue;}
-        /* restart after a reference change or a gap (half the window: the rate
-           is taken between the oldest and the newest sample, so the sampling
-           interval itself does not matter) */
-        if (!q.empty()&&(q.back().ref!=ref||timediff(b->time,q.back().t)>0.5*m->window)) q.clear();
+        /* restart after a reference change or a gap longer than the window (the
+           rate is taken between the oldest and the newest sample, so the
+           sampling interval itself does not matter: 1 s to 30 s data) */
+        if (!q.empty()&&(q.back().ref!=ref||timediff(b->time,q.back().t)>m->window)) q.clear();
         q.push_back({b->time,s->dd_iono,ref});
         while (q.size()>2&&timediff(b->time,q.front().t)>m->window) q.pop_front();
         double dt=timediff(b->time,q.front().t);

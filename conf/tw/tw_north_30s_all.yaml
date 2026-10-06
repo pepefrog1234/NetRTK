@@ -1,0 +1,121 @@
+# Northern Taiwan, CWA GDMS continuous stations (Trimble Alloy / NetR9), 2026-09-27 (DOY 270),
+# 30 s RINEX 2.11 (GPS + Galileo processed; GLONASS ignored, QZSS/BDS absent). Ring of six stations
+# 24-44 km apart (KYI2 HSIN BAL2 PLIN WALI TAN2); the seven interior stations are leave-out rovers.
+# tw_north_30s_all.yaml enables every station (coordinate adjustment, dense-network experiments).
+# Coordinates: datum = LNK2's receiver (RTX-like) position; all others estimated from the data
+# (tools/twdata/station_coords.py as start, refined with tools/twdata/adjust_coords.py until the
+# corrections were < 1 mm, see docs/VALIDATION.md). Replace with official coordinates when available.
+# FUSN is disabled: its baselines fix < 65% even with adjusted coordinates (receiver data quality).
+# Data: data/real/tw/ via tools/twdata/extract_gdms.sh (licence of the Central Weather Administration);
+# other days: tools/twdata/config_for_day.py.
+network:
+  name: TW-North
+  frame: ITRF2020
+  epoch: 2026.74
+  max_baseline_km: 50
+  antex: data/real/atx/igs20.atx
+stations:
+  - id: KYI2
+    ecef: [-2984976.1818, 4952058.4081, 2683199.4480]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/kyi22700.26o.gz
+    rtcm_id: 301
+  - id: HSIN
+    ecef: [-2984386.2990, 4964052.4611, 2661790.2724]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/hsin2700.26o.gz
+    rtcm_id: 302
+  - id: FUSN
+    enabled: false
+    ecef: [-3012664.9385, 4948837.2241, 2659035.4567]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/fusn2700.26o.gz
+    rtcm_id: 303
+  - id: PLIN
+    ecef: [-3042295.0110, 4923212.0478, 2672523.3059]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/plin2700.26o.gz
+    rtcm_id: 304
+  - id: WALI
+    ecef: [-3034105.4715, 4914672.7166, 2696728.4214]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/wali2700.26o.gz
+    rtcm_id: 305
+  - id: TAN2
+    ecef: [-3011889.1540, 4928198.2481, 2697011.0143]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/tan22700.26o.gz
+    rtcm_id: 306
+  - id: YAME
+    ecef: [-2997324.8424, 4952037.1929, 2669972.5185]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/yame2700.26o.gz
+    rtcm_id: 307
+  - id: KSH2
+    ecef: [-2999691.3740, 4957751.7147, 2656645.8047]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/ksh22700.26o.gz
+    rtcm_id: 308
+  - id: LNK2
+    ecef: [-3009796.2534, 4935262.6814, 2686986.1304]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/lnk22700.26o.gz
+    rtcm_id: 309
+  - id: WUKU
+    ecef: [-3010824.7073, 4932392.5519, 2690938.9421]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/wuku2700.26o.gz
+    rtcm_id: 310
+  - id: ZUZH
+    ecef: [-3022266.0316, 4923338.4377, 2695614.0652]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/zuzh2700.26o.gz
+    rtcm_id: 311
+  - id: ANBU
+    ecef: [-3020609.1951, 4923470.2848, 2697765.9311]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/anbu2700.26o.gz
+    rtcm_id: 312
+  - id: SAJ2
+    ecef: [-3015901.4815, 4921188.5292, 2705275.9725]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/saj22700.26o.gz
+    rtcm_id: 313
+  - id: BAL2
+    ecef: [-3023971.3363, 4948782.9427, 2649556.8762]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/bal22700.26o.gz
+    rtcm_id: 314
+solver:
+  systems: [GPS, GAL]
+  elevation_mask_deg: 10
+  ar_elevation_mask_deg: 10
+  ar_ratio: 3.0
+offline:
+  nav: [data/real/nav/BRDC00IGS_R_20262700000_01D_MN.rnx]
+  start: "2026-09-27 00:00:00"
+  duration_s: 86400
+  interval_s: 30
+  out_dir: results/tw_north_30s_all
+  vrs:
+    - {name: LOO_YAME, leave_out: YAME}
+    - {name: LOO_KSH2, leave_out: KSH2}
+    - {name: LOO_LNK2, leave_out: LNK2}
+    - {name: LOO_WUKU, leave_out: WUKU}
+    - {name: LOO_ZUZH, leave_out: ZUZH}
+    - {name: LOO_ANBU, leave_out: ANBU}
+    - {name: LOO_SAJ2, leave_out: SAJ2}
