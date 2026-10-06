@@ -1,0 +1,105 @@
+# nrtk example configuration (all keys, with defaults). See docs/ for details.
+#
+# Station coordinates: ITRF2020 (IGS20) marker positions at `epoch`, ideally
+# from a 7-day PPP solution (spec ch.4). The VRS is generated in this frame.
+
+network:
+  name: TW-NRTK
+  frame: ITRF2020
+  epoch: 2026.75              # coordinate epoch (decimal year)
+  max_baseline_km: 70         # baselines computed up to this length; also the
+                              # max distance VRS -> nearest station (service limit)
+  lsm_radius_km: 50           # extra aux stations within this radius of the VRS (LSM)
+  max_aux: 6
+  antex: data/igs20.atx       # receiver antenna calibrations (multi-GNSS PCO/PCV)
+
+stations:
+  - id: STA1
+    ecef: [-2956000.123, 5000000.456, 2600000.789]   # or llh: [lat_deg, lon_deg, h_ell_m]
+    velocity: [0.0, 0.0, 0.0] # m/yr, applied from `epoch` (optional)
+    antenna: "SEPCHOKE_B3E6  NONE"   # IGS type + radome (as in igs20.atx)
+    arp_height_m: 0.0         # ARP above marker (or arp_enu_m: [e, n, u])
+    stream: ntrip://user:pass@caster:2101/STA1   # real time: ntrip:// tcpcli:// serial:// file:// rinex://
+    rinex: data/STA1_20262700000_01D_01S_MO.rnx  # offline (nrtk-net / nrtk-gen)
+    rtcm_id: 101              # station id used for nearest-station pass-through
+    enabled: true
+
+solver:                       # network solution (spec ch.5)
+  engine: native              # native | rtklib  (see docs/VALIDATION.md)
+  systems: [GPS, GAL, BDS, QZS]
+  frequencies: 3              # 2: f1/f2, 3: + extra-wide-lane with f3
+  elevation_mask_deg: 10
+  ar_elevation_mask_deg: 10   # partial fixing still starts with the highest satellites
+  ar_ratio: 3.0
+  min_fix_sats: 4             # DD ambiguities for the initial fix
+  min_lock: 5                 # epochs of continuous tracking before fixing
+  max_drop: 6                 # partial ambiguity resolution: max satellites dropped
+  wl_min_time_s: 30           # Melbourne-Wubbena averaging before wide-lane fixing
+  wl_min_epochs: 5
+  wl_max_frac: 0.20
+  max_fix_residual_m: 0.06    # validation of new fixes against the troposphere model
+  hold_variance: 0.001        # fix-and-hold pseudo-measurement variance (cycle^2)
+  closure_check: true         # drop fixes that break the triangle closure of the network
+  phase_error_m: 0.003        # phase error model a + b/sin(el)
+  trop_process_noise: 1.0e-4  # relative ZWD random walk (m/sqrt(s))
+  tide: true                  # solid earth tide
+  # rtklib engine only:
+  iono_prior_ppm: 0.5         # SD ionosphere prior std (ppm of baseline length) ...
+  iono_prior_min_m: 1.0       # ... but at least this (low latitude!)
+  iono_process_noise: 1.0e-3  # per 10 km (m/sqrt(s))
+  code_phase_ratio: 100
+  troposphere: est-ztd        # est-ztd | est-ztdgrad
+  # signal plan (processing frequencies in priority order, and output signals):
+  # signals:
+  #   GPS: {proc: ["1C 1W", "2W 2L 2X 2S", "5Q 5X"], out: "1C 2W 2L 2X 2S 5Q 5X"}
+  #   GAL: {proc: ["1C 1X", "7Q 7X", "5Q 5X"],       out: "1C 1X 5Q 5X 7Q 7X"}
+  #   BDS: {proc: ["2I 2X", "6I 6X", "5P 5X"],       out: "2I 2X 6I 6X 1P 1X 5P 5X"}
+  #   QZS: {proc: ["1C 1X", "2L 2X 2S", "5Q 5X"],    out: "1C 2L 2X 5Q 5X"}
+
+interp:                       # atmospheric interpolation (spec ch.6)
+  method: auto                # auto (LIM for 2 aux, LSM for >=3) | lim | lsm
+  min_baselines: 2
+  min_sats: 6                 # fewer -> VRS flagged degraded
+  trop_model: true            # reduce non-dispersive part by Saastamoinen+GMF, restore at VRS height
+  iono_rate_threshold_m_per_min: 0.1   # ionosphere activity -> degraded flag
+
+output:                       # VRS output (spec ch.7)
+  msm: 7                      # 7 or 4 (offline files; real time: per mountpoint)
+  rate_hz: 1
+  vrs_rebuild_km: 5           # rebuild the VRS when the rover moves farther
+  elevation_mask_deg: 10
+  pass_unfixed: false         # output satellites without corrections (lock time reset)
+  lock_reset_jump_m: 0.03     # correction jump that resets the MSM lock time
+  ephemeris: false            # pass broadcast ephemerides through (1019/1042/1044/1046)
+  diagnostics: true           # offline: per-satellite diagnostics CSV
+
+offline:                      # nrtk-net / nrtk-gen
+  nav: [data/BRDC00IGS_R_20262700000_01D_MN.rnx]
+  start: "2026-09-27 00:00:00"   # GPST
+  duration_s: 86400
+  interval_s: 1
+  out_dir: results/example
+  vrs:
+    - {name: LOO_STA5, leave_out: STA5}        # leave-one-out validation job
+    - {name: P1, llh: [24.80, 121.10, 120.0]}  # VRS at a given position
+
+server:                       # nrtk-svr (spec ch.8 / ch.11)
+  port: 2101
+  mount_msm7: VRS_MSM7
+  mount_msm4: VRS_MSM4
+  mount_nearest: NEAR
+  nearest_mountpoint: true
+  gga_timeout_s: 15           # close if no valid GGA after connecting
+  no_data_close_s: 10         # close if no VRS can be generated
+  sync_window_s: 0.5          # epoch wait window for late stations
+  station_offline_s: 10       # absent this long -> station offline
+  health_fixrate: 0.9         # station health: 60 s fix rate of its baselines
+  health_latency_s: 2.0
+  threads: 0                  # baseline worker threads (0: number of cores)
+  allow_anonymous: true       # prototype: anonymous access
+  max_connections_per_user: 4
+  users:
+    - {user: rover1, password: secret, max_connections: 2}
+  log_file: ""                # empty: stderr
+  log_json: false             # structured (JSON lines) logs
+  replay_speed: 1.0           # rinex:// replay speed

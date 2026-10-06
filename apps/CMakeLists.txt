@@ -1,0 +1,8 @@
+foreach(app nrtk-sim nrtk-net nrtk-gen nrtk-svr nrtk-tools)
+  file(GLOB _srcs ${CMAKE_CURRENT_SOURCE_DIR}/${app}/*.c ${CMAKE_CURRENT_SOURCE_DIR}/${app}/*.cpp)
+  if(_srcs)
+    add_executable(${app} ${_srcs})
+    target_link_libraries(${app} PRIVATE nrtk)
+    target_compile_options(${app} PRIVATE -Wall -Wno-unused-parameter -Wno-missing-field-initializers)
+  endif()
+endforeach()

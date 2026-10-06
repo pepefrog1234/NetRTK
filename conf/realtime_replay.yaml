@@ -1,0 +1,53 @@
+# Real-time server demo: the synthetic quiet-ionosphere network replayed from
+# RINEX files at wall-clock speed (stream: rinex://...). Generate the data first:
+#   ./build/bin/nrtk-sim conf/sim/tw_quiet.yaml
+network:
+  name: SIM
+  frame: ITRF2020
+  epoch: 2026.7200
+  max_baseline_km: 70
+  antex: data/sim/tw_quiet/nrtksim.atx
+stations:
+  - id: TWA1
+    ecef: [-3001875.5703, 4946937.8364, 2674117.0167]
+    antenna: "NRTKSIM_ANT1 NONE"
+    arp_height_m: 0.1050
+    rinex: data/sim/tw_quiet/TWA1.rnx
+    stream: rinex://data/sim/tw_quiet/TWA1.rnx
+    rtcm_id: 101
+  - id: TWB2
+    ecef: [-2979261.3340, 4974041.8964, 2648941.0335]
+    antenna: "NRTKSIM_ANT2 NONE"
+    arp_height_m: 0.0000
+    rinex: data/sim/tw_quiet/TWB2.rnx
+    stream: rinex://data/sim/tw_quiet/TWB2.rnx
+    rtcm_id: 102
+  - id: TWC3
+    ecef: [-3014365.2443, 4957759.8617, 2641116.8368]
+    antenna: "NRTKSIM_ANT1 NONE"
+    arp_height_m: 0.2500
+    rinex: data/sim/tw_quiet/TWC3.rnx
+    stream: rinex://data/sim/tw_quiet/TWC3.rnx
+    rtcm_id: 103
+  - id: TWD4
+    ecef: [-2964810.1338, 4963661.6352, 2684105.8766]
+    antenna: "NRTKSIM_ANT2 NONE"
+    arp_height_m: 0.0500
+    rinex: data/sim/tw_quiet/TWD4.rnx
+    stream: rinex://data/sim/tw_quiet/TWD4.rnx
+    rtcm_id: 104
+  - id: TWE5
+    ecef: [-2997379.9110, 4959023.8657, 2657073.1018]
+    antenna: "NRTKSIM_ANT1 NONE"
+    arp_height_m: 0.0800
+    rinex: data/sim/tw_quiet/TWE5.rnx
+    stream: rinex://data/sim/tw_quiet/TWE5.rnx
+    rtcm_id: 105
+offline:
+  nav: [data/sim/tw_quiet/brdc.nav]     # ephemerides for the replay
+server:
+  port: 2101
+  sync_window_s: 0.5
+  gga_timeout_s: 15
+  allow_anonymous: true
+  replay_speed: 1.0

@@ -1,0 +1,40 @@
+# nrtk-sim scenario: northern Taiwan network, ~40 km station spacing,
+# pre-dawn (03-05 local): quiet ionosphere.
+start: "2026-09-20 19:00:00"     # GPST = 03:00 local (UTC+8)
+duration_s: 900
+interval_s: 1
+seed: 4242
+systems: [GPS, GAL, BDS, QZS]
+output_dir: @OUT@/sim
+elevation_min_deg: 5
+ref_lat: 24.8
+ref_lon: 121.1
+stations:
+  - {id: TWA1, llh: [24.95, 121.25, 150.0], antenna: "NRTKSIM_ANT1 NONE", arp_height_m: 0.105}
+  - {id: TWB2, llh: [24.70, 120.92,  50.0], antenna: "NRTKSIM_ANT2 NONE", arp_height_m: 0.000}
+  - {id: TWC3, llh: [24.62, 121.30, 600.0], antenna: "NRTKSIM_ANT1 NONE", arp_height_m: 0.250, multipath: 1.5}
+  - {id: TWD4, llh: [25.05, 120.85,  30.0], antenna: "NRTKSIM_ANT2 NONE", arp_height_m: 0.050, clock: free}
+  - {id: TWE5, llh: [24.78, 121.15, 250.0], antenna: "NRTKSIM_ANT1 NONE", arp_height_m: 0.080}
+iono:
+  vtec_day: 25          # TECU
+  vtec_night: 6
+  crest_lat: 23.0       # equatorial anomaly northern crest
+  crest_amp: 4
+  crest_width_deg: 3
+  tid_amp: 0.08         # medium-scale TID
+  tid_wavelength_km: 300
+  tid_period_min: 40
+  tid_azimuth_deg: 160
+  small_scale_amp: 0.012
+  shell_height_km: 350
+trop:
+  zwd_sealevel: 0.28
+  zwd_scale_height_m: 2000
+  zwd_north_m_per_100km: 0.01
+  zwd_east_m_per_100km: 0.005
+  zwd_rw_m_per_sqrt_h: 0.01
+  zwd_local_rw_m_per_sqrt_h: 0.004
+  gradient_m: 0.0005
+orbit_error_rac_m: [0.3, 1.0, 0.6]
+noise: {phase_m: 0.0015, code_m: 0.15}
+slip_rate: 2.0e-5

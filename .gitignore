@@ -1,0 +1,14 @@
+/build*/
+/out/
+*.o
+*.a
+__pycache__/
+*.pyc
+.DS_Store
+/data/real/
+/data/sim/
+/results/
+.cache/
+compile_commands.json
+_events.pos
+*.trace

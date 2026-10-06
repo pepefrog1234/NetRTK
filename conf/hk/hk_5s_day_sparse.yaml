@@ -1,0 +1,76 @@
+# Hong Kong SatRef cluster (Leica GR50), 2026-09-27 (DOY 270). 5 s, full day. Sparse: outer ring only (HKSL HKTK HKWS HKOH HKLM, 12-43 km); interior stations are rovers.
+# Coordinates: IGS20/ITRF2020 marker positions at epoch 2026.7379 (NGL daily finals).
+# Data licence: HK Geodetic Survey, personal/non-commercial internal use only.
+network:
+  name: HK-SatRef
+  frame: ITRF2020
+  epoch: 2026.7379
+  max_baseline_km: 70
+  antex: data/real/atx/igs20.atx
+stations:
+  - id: HKSL
+    ecef: [-2393383.2890, 5393860.8875, 2412592.1091]
+    antenna: "LEIAR25.R4 LEIT"
+    arp_height_m: 0.0083
+    rinex: data/real/hk/2026_270/5s/HKSL00HKG_R_20262700000_01D_05S_MO.rnx
+    rtcm_id: 200
+  - id: HKKT
+    ecef: [-2405144.7718, 5385194.9681, 2420032.2379]
+    antenna: "LEIAR25.R4 LEIT"
+    arp_height_m: 0.0083
+    rinex: data/real/hk/2026_270/5s/HKKT00HKG_R_20262700000_01D_05S_MO.rnx
+    rtcm_id: 201
+    enabled: false
+  - id: HKTK
+    ecef: [-2418093.2478, 5374658.0491, 2430428.8822]
+    antenna: "LEIAT504 LEIS"
+    arp_height_m: 0.0083
+    rinex: data/real/hk/2026_270/5s/HKTK00HKG_R_20262700000_01D_05S_MO.rnx
+    rtcm_id: 202
+  - id: HKWS
+    ecef: [-2430579.8765, 5374285.3857, 2418956.0257]
+    antenna: "LEIAR25.R4 LEIT"
+    arp_height_m: 0.0083
+    rinex: data/real/hk/2026_270/5s/HKWS00HKG_R_20262700000_01D_05S_MO.rnx
+    rtcm_id: 203
+  - id: HKOH
+    ecef: [-2423817.7718, 5386056.8121, 2399883.0694]
+    antenna: "LEIAR25.R4 LEIT"
+    arp_height_m: 0.0083
+    rinex: data/real/hk/2026_270/5s/HKOH00HKG_R_20262700000_01D_05S_MO.rnx
+    rtcm_id: 204
+  - id: HKLM
+    ecef: [-2414046.8176, 5391602.0594, 2396878.5812]
+    antenna: "TRM59800.00 SCIS"
+    arp_height_m: 0.0083
+    rinex: data/real/hk/2026_270/5s/HKLM00HKG_R_20262700000_01D_05S_MO.rnx
+    rtcm_id: 205
+  - id: HKST
+    ecef: [-2417143.7460, 5382345.1978, 2415036.6473]
+    antenna: "LEIAR25.R4 LEIT"
+    arp_height_m: 0.0083
+    rinex: data/real/hk/2026_270/5s/HKST00HKG_R_20262700000_01D_05S_MO.rnx
+    rtcm_id: 206
+    enabled: false
+  - id: HKSC
+    ecef: [-2414267.7882, 5386768.6969, 2407459.7282]
+    antenna: "LEIAR25.R4 LEIT"
+    arp_height_m: 0.0083
+    rinex: data/real/hk/2026_270/5s/HKSC00HKG_R_20262700000_01D_05S_MO.rnx
+    rtcm_id: 207
+    enabled: false
+solver:
+  systems: [GPS, GAL, QZS]    # BDS is single-frequency (B1I) on these GR50 receivers
+  elevation_mask_deg: 10
+  ar_elevation_mask_deg: 10
+  ar_ratio: 3.0
+offline:
+  nav: [data/real/nav/BRDC00IGS_R_20262700000_01D_MN.rnx]
+  start: "2026-09-27 00:00:00"
+  duration_s: 86400
+  interval_s: 5
+  out_dir: results/hk_5s_day_sparse
+  vrs:
+    - {name: LOO_HKST, leave_out: HKST}
+    - {name: LOO_HKKT, leave_out: HKKT}
+    - {name: LOO_HKSC, leave_out: HKSC}

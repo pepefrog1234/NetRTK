@@ -1,0 +1,3 @@
+[submodule "third_party/RTKLIB"]
+	path = third_party/RTKLIB
+	url = https://github.com/rtklibexplorer/RTKLIB.git
