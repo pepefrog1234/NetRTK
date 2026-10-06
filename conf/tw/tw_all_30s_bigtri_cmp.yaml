@@ -1,0 +1,785 @@
+# Dense-network comparison for conf/tw/tw_bigtri_30s.yaml: tw_all_30s.yaml with the six interior
+# rovers of the big triangle additionally left out (the ten original leave-outs stay disabled).
+# Whole Taiwan, CWA GDMS continuous stations, 2026-09-27 (DOY 270), 30 s RINEX 2.11, GPS + Galileo
+# (GLONASS is not supported by nrtk, QZSS/SBAS were removed by teqc, BDS is not in RINEX 2.11).
+# 120 of the 124 stations have a neighbour within 50 km; the islands CHNT, KIMN, LANY, MATZ are left out.
+# Coordinates: datum = LNK2 receiver (RTX-like header) position; the others were estimated from the
+# network's own fixed residuals (tools/twdata/adjust_coords.py, Alloy header / NetR9 static start,
+# iterated until the corrections were < 1 mm; day-to-day repeatability see docs/VALIDATION.md 9.4).
+# Eleven stations are disabled as unusable at 30 s: NetR9 receivers with 0.4-0.5 m code noise and
+# frequent L2 slips whose wide-lanes never converge between slips (baseline fix rate in brackets;
+# DANL fixes 47 % but its adjusted height jumps by 10 cm between iterations).
+# Ten well-distributed stations are disabled as leave-out rovers (offline.vrs jobs).
+# Data: data/real/tw/ via tools/twdata/extract_gdms.sh (licence of the Central Weather Administration).
+network:
+  name: TW-all-x
+  frame: ITRF2020
+  epoch: 2026.74
+  max_baseline_km: 50
+  antex: data/real/atx/igs20.atx
+stations:
+  - id: ALIS
+    enabled: false            # leave-out rover (big-triangle comparison)
+    ecef: [-2998730.0929, 5027763.1222, 2529398.4866]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/alis2700.26o.gz
+    rtcm_id: 401
+  - id: ANBU
+    enabled: false            # leave-out rover
+    ecef: [-3020609.2185, 4923470.3183, 2697765.9487]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/anbu2700.26o.gz
+    rtcm_id: 402
+  - id: BAL2
+    enabled: false            # leave-out rover
+    ecef: [-3023971.3640, 4948782.9905, 2649556.9025]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/bal22700.26o.gz
+    rtcm_id: 403
+  - id: BIMO
+    ecef: [-3032848.1075, 5054020.8022, 2429030.2307]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/bimo2700.26o.gz
+    rtcm_id: 404
+  - id: BLOW
+    ecef: [-3048433.4747, 4960732.5248, 2595804.1505]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/blow2700.26o.gz
+    rtcm_id: 405
+  - id: CHEN
+    enabled: false            # leave-out rover
+    ecef: [-3055984.2940, 5011702.1748, 2486670.3298]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/chen2700.26o.gz
+    rtcm_id: 406
+  - id: CHIA
+    enabled: false            # leave-out rover (big-triangle comparison)
+    ecef: [-2964474.5598, 5046121.2007, 2527207.2638]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/chia2700.26o.gz
+    rtcm_id: 407
+  - id: CHIN
+    enabled: false            # unusable at 30 s (NetR9 code noise, fix rate 4 %)
+    ecef: [-2959903.6010, 5008482.6807, 2605700.8165]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/chin2700.26o.gz
+    rtcm_id: 408
+  - id: CHIU
+    ecef: [-2989469.0932, 5009132.1673, 2573189.5436]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/chiu2700.26o.gz
+    rtcm_id: 409
+  - id: CHU2
+    ecef: [-2962465.1566, 5017824.9038, 2584997.4672]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/chu22700.26o.gz
+    rtcm_id: 410
+  - id: CHUL
+    enabled: false            # unusable at 30 s (NetR9 code noise, fix rate 17 %)
+    ecef: [-3033680.0621, 5023895.7913, 2490389.1339]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/chul2700.26o.gz
+    rtcm_id: 411
+  - id: CHUN
+    ecef: [-3049617.3212, 4997428.4540, 2522855.0701]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/chun2700.26o.gz
+    rtcm_id: 412
+  - id: CLAN
+    ecef: [-3033048.3272, 4947156.1562, 2639267.9606]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/clan2700.26o.gz
+    rtcm_id: 413
+  - id: CLON
+    ecef: [-3000786.3100, 5078178.2106, 2418517.4915]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/clon2700.26o.gz
+    rtcm_id: 414
+  - id: DAHU
+    ecef: [-2981747.2049, 4987697.4604, 2621129.3334]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/dahu2700.26o.gz
+    rtcm_id: 415
+  - id: DAJN
+    ecef: [-3028755.2552, 5067708.8022, 2406474.3742]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/dajn2700.26o.gz
+    rtcm_id: 416
+  - id: DANI
+    enabled: false            # unusable at 30 s (NetR9 code noise, fix rate 13 %)
+    ecef: [-2966486.2952, 5064067.7041, 2488910.8156]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/dani2700.26o.gz
+    rtcm_id: 417
+  - id: DANL
+    enabled: false            # unusable at 30 s (NetR9 code noise, fix rate 47 %, height not repeatable)
+    ecef: [-3020948.6839, 5077373.3640, 2395411.3448]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/danl2700.26o.gz
+    rtcm_id: 418
+  - id: DCHU
+    ecef: [-3045318.2051, 5012497.2109, 2498534.1648]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/dchu2700.26o.gz
+    rtcm_id: 419
+  - id: DNAN
+    enabled: false            # leave-out rover
+    ecef: [-2961782.9956, 5038561.3565, 2545256.7397]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/dnan2700.26o.gz
+    rtcm_id: 420
+  - id: DNFU
+    ecef: [-3052028.1810, 4983914.6858, 2546439.4431]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/dnfu2700.26o.gz
+    rtcm_id: 421
+  - id: DOJI
+    ecef: [-2901960.6358, 5094416.3071, 2502951.0730]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/doji2700.26o.gz
+    rtcm_id: 422
+  - id: DPIN
+    ecef: [-2996131.5075, 4999671.6796, 2582943.2803]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/dpin2700.26o.gz
+    rtcm_id: 423
+  - id: DSIN
+    ecef: [-3045965.6236, 4990477.4412, 2540988.0642]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/dsin2700.26o.gz
+    rtcm_id: 424
+  - id: DULI
+    ecef: [-3053837.1170, 5016643.5291, 2479356.1470]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/duli2700.26o.gz
+    rtcm_id: 425
+  - id: ERLN
+    ecef: [-2956486.1284, 5035268.6264, 2557805.2831]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/erln2700.26o.gz
+    rtcm_id: 426
+  - id: FENP
+    enabled: false            # unusable at 30 s (NetR9 code noise, fix rate 0 %)
+    ecef: [-3057224.9842, 4985144.1193, 2537608.3086]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/fenp2700.26o.gz
+    rtcm_id: 427
+  - id: FIVE
+    ecef: [-3044912.6500, 4914562.8343, 2686533.8967]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/five2700.26o.gz
+    rtcm_id: 428
+  - id: FKD2
+    enabled: false            # leave-out rover
+    ecef: [-2998020.5840, 5016880.4777, 2546948.2849]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/fkd22700.26o.gz
+    rtcm_id: 429
+  - id: FLON
+    ecef: [-3059222.4958, 4907685.5280, 2681137.0878]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/flon2700.26o.gz
+    rtcm_id: 430
+  - id: FUNY
+    enabled: false            # leave-out rover
+    ecef: [-2944916.9689, 5035549.5312, 2570430.5678]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/funy2700.26o.gz
+    rtcm_id: 431
+  - id: FUSN
+    ecef: [-3012664.9239, 4948837.1937, 2659035.4408]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/fusn2700.26o.gz
+    rtcm_id: 432
+  - id: GAIS
+    enabled: false            # leave-out rover (big-triangle comparison)
+    ecef: [-2987712.4105, 5053834.4009, 2485024.7067]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/gais2700.26o.gz
+    rtcm_id: 433
+  - id: GUK2
+    ecef: [-2998885.0113, 4989611.2132, 2599120.9095]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/guk22700.26o.gz
+    rtcm_id: 434
+  - id: HAN2
+    enabled: false            # leave-out rover
+    ecef: [-3049775.6543, 4934773.2786, 2642319.0155]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/han22700.26o.gz
+    rtcm_id: 435
+  - id: HENC
+    ecef: [-3024681.3082, 5084750.0645, 2374834.1292]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/henc2700.26o.gz
+    rtcm_id: 436
+  - id: HLIU
+    ecef: [-3007204.7281, 5005982.3093, 2557570.3647]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/hliu2700.26o.gz
+    rtcm_id: 437
+  - id: HNSN
+    ecef: [-3022461.5030, 4969498.0863, 2613234.1749]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/hnsn2700.26o.gz
+    rtcm_id: 438
+  - id: HOPN
+    enabled: false            # unusable at 30 s (NetR9 code noise, fix rate 0 %)
+    ecef: [-2989772.5280, 4996557.8143, 2595782.8170]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/hopn2700.26o.gz
+    rtcm_id: 439
+  - id: HRGN
+    ecef: [-3048373.2657, 4993036.3019, 2533313.2676]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/hrgn2700.26o.gz
+    rtcm_id: 440
+  - id: HSIN
+    ecef: [-2984386.2882, 4964052.4434, 2661790.2641]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/hsin2700.26o.gz
+    rtcm_id: 441
+  - id: HSUE
+    enabled: false            # unusable at 30 s (NetR9 code noise, fix rate 8 %)
+    ecef: [-2999636.4983, 4987015.3361, 2607725.7429]
+    antenna: "TRM41249.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/hsue2700.26o.gz
+    rtcm_id: 442
+  - id: HUAL
+    ecef: [-3056585.4079, 4965782.3252, 2575812.0874]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/hual2700.26o.gz
+    rtcm_id: 443
+  - id: HUAN
+    ecef: [-3024645.2721, 4980024.6973, 2594192.4421]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/huan2700.26o.gz
+    rtcm_id: 444
+  - id: HUAP
+    ecef: [-3060403.8724, 4945662.1400, 2609529.1300]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/huap2700.26o.gz
+    rtcm_id: 445
+  - id: HUWE
+    ecef: [-2946323.4477, 5044729.4840, 2550886.7558]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/huwe2700.26o.gz
+    rtcm_id: 446
+  - id: HUYS
+    ecef: [-3003464.5841, 4992796.8216, 2587971.8388]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/huys2700.26o.gz
+    rtcm_id: 447
+  - id: ICHU
+    ecef: [-2953906.6893, 5059197.4938, 2513449.4416]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/ichu2700.26o.gz
+    rtcm_id: 448
+  - id: ILAN
+    ecef: [-3049999.8874, 4927470.0523, 2655375.0172]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/ilan2700.26o.gz
+    rtcm_id: 449
+  - id: JLUT
+    ecef: [-3006753.3202, 5079531.3897, 2408261.5180]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/jlut2700.26o.gz
+    rtcm_id: 450
+  - id: JSAN
+    enabled: false            # leave-out rover (big-triangle comparison)
+    ecef: [-2980316.6272, 5023245.8460, 2554180.2123]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/jsan2700.26o.gz
+    rtcm_id: 451
+  - id: JSU2
+    ecef: [-3051383.2257, 4994311.0869, 2526869.0910]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/jsu22700.26o.gz
+    rtcm_id: 452
+  - id: JYAN
+    ecef: [-3017603.7995, 4977487.6899, 2603602.4727]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/jyan2700.26o.gz
+    rtcm_id: 453
+  - id: KASU
+    ecef: [-2997331.6025, 5061560.0375, 2457430.1089]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/kasu2700.26o.gz
+    rtcm_id: 454
+  - id: KHLZ
+    ecef: [-2962643.3084, 5079527.7521, 2462044.6174]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/khlz2700.26o.gz
+    rtcm_id: 455
+  - id: KSH2
+    ecef: [-2999691.3402, 4957751.6592, 2656645.7744]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/ksh22700.26o.gz
+    rtcm_id: 456
+  - id: KUA2
+    ecef: [-3038753.3277, 5024822.3694, 2481878.1089]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/kua22700.26o.gz
+    rtcm_id: 457
+  - id: KYI2
+    ecef: [-2984976.1727, 4952058.3929, 2683199.4380]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/kyi22700.26o.gz
+    rtcm_id: 458
+  - id: LGU2
+    enabled: false            # leave-out rover (big-triangle comparison)
+    ecef: [-2993523.6999, 5054730.0454, 2476199.5907]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/lgu22700.26o.gz
+    rtcm_id: 459
+  - id: LIKN
+    ecef: [-2989109.0388, 5068853.7229, 2452114.8741]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/likn2700.26o.gz
+    rtcm_id: 460
+  - id: LIU2
+    ecef: [-2983867.5709, 5092259.7771, 2409934.2980]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/liu22700.26o.gz
+    rtcm_id: 461
+  - id: LNK2
+    ecef: [-3009796.2542, 4935262.6820, 2686986.1305]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/lnk22700.26o.gz
+    rtcm_id: 462
+  - id: LONT
+    ecef: [-3039043.8379, 5031810.6267, 2467245.5037]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/lont2700.26o.gz
+    rtcm_id: 463
+  - id: LTUN
+    ecef: [-3052851.9405, 4929192.6932, 2648934.5370]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/ltun2700.26o.gz
+    rtcm_id: 464
+  - id: LUKN
+    ecef: [-2951873.8200, 5024284.4702, 2584363.7289]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/lukn2700.26o.gz
+    rtcm_id: 465
+  - id: MIAO
+    ecef: [-2972543.7474, 4984455.8693, 2637257.2674]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/miao2700.26o.gz
+    rtcm_id: 466
+  - id: MLO1
+    ecef: [-2988319.4891, 5062280.9644, 2466546.1975]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/mlo12700.26o.gz
+    rtcm_id: 467
+  - id: NCKU
+    ecef: [-2962870.0640, 5075261.6028, 2470460.5583]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/ncku2700.26o.gz
+    rtcm_id: 468
+  - id: NDHU
+    ecef: [-3052991.7698, 4972125.0121, 2567905.0647]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/ndhu2700.26o.gz
+    rtcm_id: 469
+  - id: NHSI
+    ecef: [-3055921.9318, 4996003.4515, 2518122.7865]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/nhsi2700.26o.gz
+    rtcm_id: 470
+  - id: NIUT
+    ecef: [-3036510.5062, 4943199.3104, 2642516.2845]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/niut2700.26o.gz
+    rtcm_id: 471
+  - id: NJO2
+    enabled: false            # unusable at 30 s (NetR9 code noise, fix rate 11 %)
+    ecef: [-2998468.3832, 5075923.9853, 2426068.5401]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/njo22700.26o.gz
+    rtcm_id: 472
+  - id: NSAN
+    ecef: [-3026372.9432, 4961340.6128, 2622006.9354]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/nsan2700.26o.gz
+    rtcm_id: 473
+  - id: NSHE
+    ecef: [-2980258.7717, 4999249.3183, 2601310.2240]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/nshe2700.26o.gz
+    rtcm_id: 474
+  - id: PANG
+    ecef: [-2886042.1800, 5087845.2812, 2534228.6156]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/pang2700.26o.gz
+    rtcm_id: 475
+  - id: PAO2
+    ecef: [-2979356.7780, 4973593.2254, 2649755.5913]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/pao22700.26o.gz
+    rtcm_id: 476
+  - id: PLIN
+    ecef: [-3042294.9706, 4923211.9787, 2672523.2705]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/plin2700.26o.gz
+    rtcm_id: 477
+  - id: PNLA
+    ecef: [-2987579.6713, 4977971.0202, 2633306.2965]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/pnla2700.26o.gz
+    rtcm_id: 478
+  - id: PTDG
+    ecef: [-2989703.0887, 5082555.6941, 2422998.6493]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/ptdg2700.26o.gz
+    rtcm_id: 479
+  - id: PUS2
+    ecef: [-2961884.4106, 5023114.0871, 2575286.0357]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/pus22700.26o.gz
+    rtcm_id: 480
+  - id: SAJ2
+    ecef: [-3015901.4782, 4921188.5211, 2705275.9686]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/saj22700.26o.gz
+    rtcm_id: 481
+  - id: SAN2
+    ecef: [-2973032.4452, 4993412.1857, 2620204.6467]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/san22700.26o.gz
+    rtcm_id: 482
+  - id: SAND
+    enabled: false            # unusable at 30 s (NetR9 code noise, fix rate 4 %)
+    ecef: [-3000044.5747, 5064595.7880, 2447946.4827]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/sand2700.26o.gz
+    rtcm_id: 483
+  - id: SANL
+    ecef: [-2990908.6005, 5023561.1005, 2544970.6417]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/sanl2700.26o.gz
+    rtcm_id: 484
+  - id: SFON
+    ecef: [-2981508.5767, 4960069.1018, 2672358.1112]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/sfon2700.26o.gz
+    rtcm_id: 485
+  - id: SGAN
+    ecef: [-2977134.4650, 5084633.7491, 2433980.6870]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/sgan2700.26o.gz
+    rtcm_id: 486
+  - id: SGUN
+    ecef: [-2969540.7089, 5002889.3224, 2605819.8634]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/sgun2700.26o.gz
+    rtcm_id: 487
+  - id: SHLU
+    enabled: false            # unusable at 30 s (NetR9 code noise, fix rate 0 %)
+    ecef: [-2962603.3147, 5013818.9065, 2593013.0706]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/shlu2700.26o.gz
+    rtcm_id: 488
+  - id: SHUL
+    enabled: false            # leave-out rover
+    ecef: [-3056595.4315, 4975672.0732, 2556800.0206]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/shul2700.26o.gz
+    rtcm_id: 489
+  - id: SHWA
+    enabled: false            # leave-out rover (big-triangle comparison)
+    ecef: [-2967454.2998, 5068474.9503, 2478938.9155]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/shwa2700.26o.gz
+    rtcm_id: 490
+  - id: SLIN
+    ecef: [-3045555.9858, 4981322.3691, 2559314.8038]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/slin2700.26o.gz
+    rtcm_id: 491
+  - id: SLNP
+    ecef: [-3040074.3992, 4934689.1905, 2654470.3579]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/slnp2700.26o.gz
+    rtcm_id: 492
+  - id: SONA
+    ecef: [-2992747.2440, 4983554.3823, 2619033.2302]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/sona2700.26o.gz
+    rtcm_id: 493
+  - id: SPAO
+    ecef: [-3040452.8725, 4964509.0656, 2599414.6281]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/spao2700.26o.gz
+    rtcm_id: 494
+  - id: SSUN
+    ecef: [-2961413.1119, 5052094.0240, 2518891.6329]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/ssun2700.26o.gz
+    rtcm_id: 495
+  - id: SUA2
+    ecef: [-3061447.9101, 4928441.7816, 2640449.3443]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/sua22700.26o.gz
+    rtcm_id: 496
+  - id: SUAN
+    ecef: [-2953126.0183, 5053691.8477, 2525330.8726]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/suan2700.26o.gz
+    rtcm_id: 497
+  - id: SUC2
+    ecef: [-2988201.1410, 4991122.5227, 2607984.0061]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/suc22700.26o.gz
+    rtcm_id: 498
+  - id: SUN1
+    ecef: [-2997876.1542, 5007429.1021, 2566681.2721]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/sun12700.26o.gz
+    rtcm_id: 499
+  - id: TAN2
+    ecef: [-3011889.1480, 4928198.2374, 2697011.0077]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/tan22700.26o.gz
+    rtcm_id: 500
+  - id: TATA
+    enabled: false            # unusable at 30 s (NetR9 code noise, fix rate 4 %)
+    ecef: [-3005906.6969, 5025081.3666, 2526763.6359]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/tata2700.26o.gz
+    rtcm_id: 501
+  - id: TCHN
+    ecef: [-3054125.7235, 4920014.4430, 2664375.9841]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/tchn2700.26o.gz
+    rtcm_id: 502
+  - id: TEGS
+    ecef: [-2964379.7245, 5001529.2733, 2614381.7746]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/tegs2700.26o.gz
+    rtcm_id: 503
+  - id: TSHI
+    ecef: [-3027244.6902, 4914415.4537, 2704861.8747]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/tshi2700.26o.gz
+    rtcm_id: 504
+  - id: TSIO
+    ecef: [-2965851.0825, 4994246.3393, 2626061.5362]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/tsio2700.26o.gz
+    rtcm_id: 505
+  - id: TTCS
+    ecef: [-3041614.4547, 5019311.0446, 2489569.2728]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/ttcs2700.26o.gz
+    rtcm_id: 506
+  - id: TUNM
+    ecef: [-3046494.0299, 4972675.8593, 2574841.8944]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/tunm2700.26o.gz
+    rtcm_id: 507
+  - id: TUNS
+    enabled: false            # leave-out rover
+    ecef: [-2965888.2139, 5054414.8518, 2509042.9798]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/tuns2700.26o.gz
+    rtcm_id: 508
+  - id: WALI
+    ecef: [-3034105.4569, 4914672.6909, 2696728.4075]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/wali2700.26o.gz
+    rtcm_id: 509
+  - id: WANS
+    ecef: [-3002075.4166, 5019044.8886, 2538888.0741]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/wans2700.26o.gz
+    rtcm_id: 510
+  - id: WDAN
+    ecef: [-2990315.9584, 5075675.2499, 2436517.7902]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/wdan2700.26o.gz
+    rtcm_id: 511
+  - id: WFEN
+    enabled: false            # leave-out rover
+    ecef: [-2975475.1153, 5011375.0834, 2582568.8427]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/wfen2700.26o.gz
+    rtcm_id: 512
+  - id: WIPN
+    ecef: [-2991962.4733, 4967952.8512, 2646455.2694]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/wipn2700.26o.gz
+    rtcm_id: 513
+  - id: WUKU
+    ecef: [-3010824.7005, 4932392.5425, 2690938.9348]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/wuku2700.26o.gz
+    rtcm_id: 514
+  - id: YAME
+    ecef: [-2997324.8330, 4952037.1792, 2669972.5098]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/yame2700.26o.gz
+    rtcm_id: 515
+  - id: YENL
+    ecef: [-3057286.9605, 4969188.6551, 2568552.1960]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/yenl2700.26o.gz
+    rtcm_id: 516
+  - id: YLSS
+    ecef: [-3043465.1225, 4936840.4163, 2645743.0426]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/ylss2700.26o.gz
+    rtcm_id: 517
+  - id: YUL1
+    ecef: [-3044552.0951, 5007367.6964, 2509520.3075]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/yul12700.26o.gz
+    rtcm_id: 518
+  - id: ZEND
+    ecef: [-2957601.2342, 5078085.0747, 2470949.5404]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/zend2700.26o.gz
+    rtcm_id: 519
+  - id: ZUZH
+    ecef: [-3022266.0481, 4923338.4618, 2695614.0773]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/zuzh2700.26o.gz
+    rtcm_id: 520
+solver:
+  systems: [GPS, GAL]
+  elevation_mask_deg: 10
+  ar_elevation_mask_deg: 10
+  ar_ratio: 3.0
+offline:
+  nav: [data/real/nav/BRDC00IGS_R_20262700000_01D_MN.rnx]
+  start: "2026-09-27 00:00:00"
+  duration_s: 86400
+  interval_s: 30
+  out_dir: results/tw_all_30s_x
+  vrs:
+    - {name: LOO_JSAN, leave_out: JSAN}
+    - {name: LOO_LGU2, leave_out: LGU2}
+    - {name: LOO_SHWA, leave_out: SHWA}
+    - {name: LOO_GAIS, leave_out: GAIS}
+    - {name: LOO_ALIS, leave_out: ALIS}
+    - {name: LOO_CHIA, leave_out: CHIA}

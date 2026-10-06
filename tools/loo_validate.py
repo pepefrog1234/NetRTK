@@ -78,6 +78,8 @@ def rtk_conf(path, antex, rover, base, base_pos, base_ant, base_del, navsys, elm
 
 def read_pos(fn):
     out = []
+    if not os.path.exists(fn):  # rnx2rtkp writes nothing when the window has no rover/base epochs
+        return out
     for line in open(fn):
         if line.startswith('%') or not line.strip():
             continue

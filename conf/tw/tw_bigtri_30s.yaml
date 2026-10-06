@@ -1,0 +1,107 @@
+# Experiment: can a single large triangle 台中 WFEN – 台南 NCKU – 台東 LONT (130 / 88 / 133 km,
+# all Trimble Alloy) serve rovers inside it? Same data, coordinates and solver settings as
+# tw_all_30s.yaml (DOY 270, 30 s, GPS+Galileo); only the three vertices are enabled, the other
+# stations listed are leave-out rovers: interior (JSAN LGU2 SHWA GAIS ALIS), 2-3 km outside an
+# edge (FKD2 TUNS, which have dense-network results in docs/VALIDATION.md 9.4) and CHIA (64 km from
+# the nearest vertex). max_baseline_km raised so that the three long baselines are formed.
+network:
+  name: TW-bigtri
+  frame: ITRF2020
+  epoch: 2026.74
+  max_baseline_km: 140
+  antex: data/real/atx/igs20.atx
+stations:
+  - id: WFEN
+    ecef: [-2975475.1153, 5011375.0834, 2582568.8427]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/wfen2700.26o.gz
+    rtcm_id: 512
+  - id: NCKU
+    ecef: [-2962870.0640, 5075261.6028, 2470460.5583]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/ncku2700.26o.gz
+    rtcm_id: 468
+  - id: LONT
+    ecef: [-3039043.8379, 5031810.6267, 2467245.5037]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/lont2700.26o.gz
+    rtcm_id: 463
+  - id: JSAN
+    enabled: false            # leave-out rover
+    ecef: [-2980316.6272, 5023245.8460, 2554180.2123]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/jsan2700.26o.gz
+    rtcm_id: 451
+  - id: LGU2
+    enabled: false            # leave-out rover
+    ecef: [-2993523.6999, 5054730.0454, 2476199.5907]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/lgu22700.26o.gz
+    rtcm_id: 459
+  - id: SHWA
+    enabled: false            # leave-out rover
+    ecef: [-2967454.2998, 5068474.9503, 2478938.9155]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/shwa2700.26o.gz
+    rtcm_id: 490
+  - id: GAIS
+    enabled: false            # leave-out rover
+    ecef: [-2987712.4105, 5053834.4009, 2485024.7067]
+    antenna: "TRM57971.00 SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/gais2700.26o.gz
+    rtcm_id: 433
+  - id: ALIS
+    enabled: false            # leave-out rover
+    ecef: [-2998730.0929, 5027763.1222, 2529398.4866]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/alis2700.26o.gz
+    rtcm_id: 401
+  - id: FKD2
+    enabled: false            # leave-out rover
+    ecef: [-2998020.5840, 5016880.4777, 2546948.2849]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/fkd22700.26o.gz
+    rtcm_id: 429
+  - id: TUNS
+    enabled: false            # leave-out rover
+    ecef: [-2965888.2139, 5054414.8518, 2509042.9798]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/tuns2700.26o.gz
+    rtcm_id: 508
+  - id: CHIA
+    enabled: false            # leave-out rover
+    ecef: [-2964474.5598, 5046121.2007, 2527207.2638]
+    antenna: "TRM115000.00+S SCIT"
+    arp_height_m: 0.0000
+    rinex: data/real/tw/2026_270/chia2700.26o.gz
+    rtcm_id: 407
+solver:
+  systems: [GPS, GAL]
+  elevation_mask_deg: 10
+  ar_elevation_mask_deg: 10
+  ar_ratio: 3.0
+offline:
+  nav: [data/real/nav/BRDC00IGS_R_20262700000_01D_MN.rnx]
+  start: "2026-09-27 00:00:00"
+  duration_s: 86400
+  interval_s: 30
+  out_dir: results/tw_bigtri_30s
+  vrs:
+    - {name: LOO_JSAN, leave_out: JSAN}
+    - {name: LOO_LGU2, leave_out: LGU2}
+    - {name: LOO_SHWA, leave_out: SHWA}
+    - {name: LOO_GAIS, leave_out: GAIS}
+    - {name: LOO_ALIS, leave_out: ALIS}
+    - {name: LOO_FKD2, leave_out: FKD2}
+    - {name: LOO_TUNS, leave_out: TUNS}
+    - {name: LOO_CHIA, leave_out: CHIA}
