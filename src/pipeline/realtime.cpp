@@ -105,10 +105,12 @@ RealtimeCore::RealtimeCore(const nrtk_config_t &cfg, const nrtk_atx_t *atx)
 {
     memset(&nav_,0,sizeof(nav_));
     input_state_.assign(cfg_.nsta,"idle");
+    for (int i=0;i<cfg_.ndatum;i++) datums_.push_back(nrtk_datum_from_config(&cfg_,i));
 }
 RealtimeCore::~RealtimeCore()
 {
     stop();
+    for (auto d:datums_) nrtk_datum_free(d);
     nrtk_nav_free(&nav_);
 }
 static bool is_replay(const char *src) {return !strncmp(src,"rinex://",8);}
@@ -325,6 +327,22 @@ std::string RealtimeCore::status_json(const std::vector<NtripServer::ClientStatu
          <<",\"bytes\":"<<c.bytes_sent<<",\"gga\":"<<c.ngga<<",\"session\":"
          <<(c.session_json.empty()?"null":c.session_json)<<"}";
     }
+    o<<"],\"datums\":[";
+    for (size_t i=0;i<datums_.size();i++) {
+        const nrtk_datum_t *d=datums_[i];
+        const nrtk_datum_def_t *def=nrtk_datum_def(d);
+        o<<(i?",":"")<<"{\"name\":"<<jstr(def->name)<<",\"label\":"<<jstr(def->label)
+         <<",\"version\":"<<jstr(def->version)<<",\"points\":"<<nrtk_datum_npoints(d)
+         <<",\"triangles\":"<<nrtk_datum_ntri(d)<<",\"interp\":\""
+         <<(cfg_.datum_interp==NRTK_DATUM_INTERP_NEAREST?"nearest":"barycentric")
+         <<"\",\"status\":\""<<(nrtk_datum_ntri(d)==0?"degenerate":(nrtk_datum_nuncovered(d)?"incomplete":"ok"))
+         <<"\",\"missing_stations\":[";
+        for (int k=0;k<nrtk_datum_nmissing(d);k++) {
+            o<<(k?",":"")<<"{\"id\":"<<jstr(cfg_.sta[nrtk_datum_missing(d,k)].id)<<",\"covered\":"
+             <<(nrtk_datum_missing_covered(d,k)?"true":"false")<<"}";
+        }
+        o<<"]}";
+    }
     o<<"],\"session_events\":{";
     {
         std::lock_guard<std::mutex> lk(stmtx_);
@@ -372,14 +390,31 @@ std::string RealtimeCore::metrics(const std::vector<NtripServer::ClientStatus> &
 }
 
 /* VRS session ---------------------------------------------------------------------------*/
-VrsSession::VrsSession(RealtimeCore &core, const ClientInfo &ci, int msm, bool nearest_only)
-    : core_(core), ci_(ci), msm_(msm), nearest_only_(nearest_only)
+VrsSession::VrsSession(RealtimeCore &core, const ClientInfo &ci, int msm, bool nearest_only,
+                       int datum)
+    : core_(core), ci_(ci), msm_(msm), nearest_only_(nearest_only), datum_(datum)
 {
     created_=last_ok_=steady::now();
     staid_base_=(int)(1000+(ci.id*37)%3000);
+    if (datum_>=0&&!core_.datum(datum_)) datum_=-1;
     core_.count_session_event("connect");
-    nrtk_log(NRTK_LOG_INFO,"session","id=%llu mount=%s user=%s peer=%s created",
-             (unsigned long long)ci.id,ci.mount.c_str(),ci.user.c_str(),ci.peer.c_str());
+    nrtk_log(NRTK_LOG_INFO,"session","id=%llu mount=%s user=%s peer=%s datum=%s created",
+             (unsigned long long)ci.id,ci.mount.c_str(),ci.user.c_str(),ci.peer.c_str(),
+             datum_>=0?nrtk_datum_def(core_.datum(datum_))->name:"ITRF");
+}
+/* RTCM 1006 position for an ITRF position: + datum shift for datum sessions.
+ * cell_ok: the position is inside a proper network triangle, so an
+ * extrapolated shift means a vertex without official coordinates (incomplete). */
+bool VrsSession::datum_pos(const double *pos, int cell_ok, const int *tri, double *out)
+{
+    memcpy(out,pos,sizeof(double)*3);
+    if (datum_<0) return true;
+    const nrtk_datum_t *d=core_.datum(datum_);
+    int mode=nrtk_datum_shift(d,pos,core_.clock().now(),delta_,&dinfo_);
+    for (int k=0;k<3;k++) out[k]=pos[k]+delta_[k];
+    if (mode==NRTK_DSHIFT_NONE) return false;
+    if (!cell_ok) return true;                  /* outside the network: served, flagged */
+    return mode==NRTK_DSHIFT_TRI&&!nrtk_datum_cell_incomplete(d,tri);
 }
 VrsSession::~VrsSession()
 {
@@ -390,16 +425,17 @@ VrsSession::~VrsSession()
 }
 void VrsSession::build_vrs(const double *pos)
 {
-    double p[3];
-    for (int i=0;i<3;i++) p[i]=floor(pos[i]+0.5);       /* 1 m grid */
+    double p[3],p1006[3];
+    for (int i=0;i<3;i++) p[i]=floor(pos[i]+0.5);       /* 1 m grid (ITRF) */
     nrtk_cell_t cell;
     nrtk_cellmgr_select(core_.network().cellmgr(),p,&cell);
     memcpy(vpos_,p,sizeof(vpos_));
     vrs_.reset(new VrsStream(core_.network(),vpos_,-1));
     for (int k=0;k<3;k++) tri_[k]=cell.tri[k];
     staid_=have_vrs_?((staid_+1)&0xFFF):staid_base_;
-    if (!enc_init_) {nrtk_rtcmout_init(&enc_,staid_,msm_,vpos_,1); enc_init_=true;}
-    else nrtk_rtcmout_restart(&enc_,staid_,vpos_);
+    bool dok=datum_pos(vpos_,cell.valid&&!cell.extrap,cell.tri,p1006);
+    if (!enc_init_) {nrtk_rtcmout_init(&enc_,staid_,msm_,p1006,1); enc_init_=true;}
+    else nrtk_rtcmout_restart(&enc_,staid_,p1006);
     enc_.non_physical=1;
     enc_.sysmask=core_.config().vrs.sysmask;
     cur_station_=-1;
@@ -407,26 +443,47 @@ void VrsSession::build_vrs(const double *pos)
     else core_.count_session_event("vrs_create");
     have_vrs_=true;
     double llh[3]; ecef2pos(vpos_,llh);
-    nrtk_log(NRTK_LOG_INFO,"session","id=%llu VRS %s at %.6f %.6f %.1f staid=%d master=%s%s",
+    char dtxt[128]="";
+    if (datum_>=0) {
+        snprintf(dtxt,sizeof(dtxt)," %s delta E %.3f N %.3f U %.3f m (%s%s)",
+                 nrtk_datum_def(core_.datum(datum_))->name,dinfo_.enu[0],dinfo_.enu[1],dinfo_.enu[2],
+                 dinfo_.mode==NRTK_DSHIFT_TRI?"interpolated":dinfo_.mode==NRTK_DSHIFT_EXTRAP?
+                 "extrapolated":dinfo_.mode==NRTK_DSHIFT_NEAREST?"nearest point":"none",
+                 dinfo_.theory?", theory":"");
+    }
+    nrtk_log(NRTK_LOG_INFO,"session","id=%llu VRS %s at %.6f %.6f %.1f staid=%d master=%s%s%s",
              (unsigned long long)ci_.id,nrebuild_?"rebuilt":"created",llh[0]*R2D,llh[1]*R2D,llh[2],
-             staid_,cell.valid?core_.config().sta[cell.master].id:"-",cell.extrap?" (extrapolated)":"");
+             staid_,cell.valid?core_.config().sta[cell.master].id:"-",cell.extrap?" (extrapolated)":"",
+             dtxt);
+    if (!dok) {
+        nrtk_log(NRTK_LOG_WARN,"session","id=%llu datum %s incomplete here (a station of this "
+                 "cell has no official coordinates in it, %s): closing",(unsigned long long)ci_.id,
+                 nrtk_datum_def(core_.datum(datum_))->name,
+                 dinfo_.mode==NRTK_DSHIFT_TRI?"shift only interpolable across it":"outside the datum points");
+        core_.count_session_event("close_datum_incomplete");
+        closing_=true;
+    }
 }
 void VrsSession::on_gga(const GgaFix &fix)
 {
     if (!fix.valid) return;
     fix_=fix; have_fix_=true;
-    if (!have_vrs_) {build_vrs(fix.ecef); return;}
+    /* a rover on a datum mountpoint reports its position in that datum */
+    double pos[3];
+    if (datum_>=0) nrtk_datum_inverse(core_.datum(datum_),fix.ecef,core_.clock().now(),pos);
+    else memcpy(pos,fix.ecef,sizeof(pos));
+    if (!have_vrs_) {build_vrs(pos); return;}
     /* rebuild: rover moved more than vrs_rebuild_km or left the triangle */
-    double d=nrtk_dist(fix.ecef,vpos_)/1E3;
+    double d=nrtk_dist(pos,vpos_)/1E3;
     bool moved=d>core_.config().vrs_rebuild_km;
     bool cellchg=false;
     if (!moved&&!nearest_only_) {
         nrtk_cell_t cell;
-        nrtk_cellmgr_select(core_.network().cellmgr(),fix.ecef,&cell);
+        nrtk_cellmgr_select(core_.network().cellmgr(),pos,&cell);
         cellchg=cell.valid&&tri_[0]>=0&&
                 !(std::is_permutation(cell.tri,cell.tri+3,tri_));
     }
-    if (moved||cellchg) build_vrs(fix.ecef);
+    if (moved||cellchg) build_vrs(pos);
 }
 bool VrsSession::on_epoch(const void *epoch, std::vector<uint8_t> &out)
 {
@@ -434,6 +491,7 @@ bool VrsSession::on_epoch(const void *epoch, std::vector<uint8_t> &out)
     const nrtk_config_t &cfg=core_.config();
     out.clear();
     nep_++;
+    if (closing_) return false;
     if (!have_vrs_) return true;                 /* waiting for a valid GGA */
 
     VrsOutput *vo=new VrsOutput;
@@ -452,11 +510,15 @@ bool VrsSession::on_epoch(const void *epoch, std::vector<uint8_t> &out)
     int station=mode==1?-1:vo->cell.nearest;
     bool restart=station!=cur_station_;
     if (restart) {
-        if (station<0) nrtk_rtcmout_restart(&enc_,staid_,vpos_);
-        else {
-            double pos[3];
+        double pos[3],p1006[3];
+        if (station<0) {
+            datum_pos(vpos_,0,nullptr,p1006);
+            nrtk_rtcmout_restart(&enc_,staid_,p1006);
+        }
+        else {          /* passed-through station: its own official coordinates */
             nrtk_sta_pos(cfg.sta+station,ep.t,pos);
-            nrtk_rtcmout_restart(&enc_,cfg.sta[station].rtcm_id?cfg.sta[station].rtcm_id:staid_,pos);
+            datum_pos(pos,0,nullptr,p1006);
+            nrtk_rtcmout_restart(&enc_,cfg.sta[station].rtcm_id?cfg.sta[station].rtcm_id:staid_,p1006);
         }
         enc_.non_physical=station<0;
         if (cur_station_!=-1||station!=-1) {
@@ -495,7 +557,27 @@ std::string VrsSession::status_json() const
     o<<",\"h\":"<<llh[2]<<",\"staid\":"<<staid_<<",\"mode\":\""
      <<(last_mode_==1?"vrs":(last_mode_==2?"nearest":"none"))<<"\",\"master\":"<<jstr(last_master_)
      <<",\"nsat\":"<<last_nsat_<<",\"degraded\":"<<last_deg_<<",\"age_s\":"<<last_age_
-     <<",\"epochs_sent\":"<<nout_<<",\"rebuilds\":"<<nrebuild_<<"}";
+     <<",\"epochs_sent\":"<<nout_<<",\"rebuilds\":"<<nrebuild_;
+    /* output datum of the 1006 position */
+    if (datum_<0) o<<",\"datum\":\"ITRF\"";
+    else {
+        const nrtk_datum_def_t *def=nrtk_datum_def(core_.datum(datum_));
+        double pd[3],ld[3]={0,0,0},E=0,N=0;
+        for (int k=0;k<3;k++) pd[k]=vpos_[k]+delta_[k];
+        if (have_vrs_) {ecef2pos(pd,ld); nrtk_tm2(ld,nrtk_tm2_zone(ld[1]),&E,&N);}
+        o<<",\"datum\":"<<jstr(def->name)<<",\"datum_label\":"<<jstr(def->label)
+         <<",\"datum_version\":"<<jstr(def->version)<<",\"datum_mode\":\""
+         <<(dinfo_.mode==NRTK_DSHIFT_TRI?"interpolated":dinfo_.mode==NRTK_DSHIFT_EXTRAP?"extrapolated":
+            dinfo_.mode==NRTK_DSHIFT_NEAREST?"nearest":"none")
+         <<"\",\"datum_source\":\""<<(dinfo_.theory?"theory":"official")<<"\"";
+        o.precision(7);
+        o<<",\"lat_datum\":"<<ld[0]*R2D<<",\"lon_datum\":"<<ld[1]*R2D;
+        o.precision(3);
+        o<<",\"h_datum\":"<<ld[2]<<",\"tm2_e\":"<<E<<",\"tm2_n\":"<<N<<",\"tm2_zone\":"<<(int)nrtk_tm2_zone(ld[1])
+         <<",\"delta_enu\":["<<dinfo_.enu[0]<<","<<dinfo_.enu[1]<<","<<dinfo_.enu[2]<<"]"
+         <<",\"datum_extrap_km\":"<<dinfo_.extrap_km;
+    }
+    o<<"}";
     return o.str();
 }
 

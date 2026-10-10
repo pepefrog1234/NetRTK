@@ -39,6 +39,14 @@ typedef struct {
     int  max_conn;
 } nrtk_user_t;
 
+/* mountpoints whose RTCM 1006 position is shifted to an output datum */
+typedef struct {
+    int  datum;                 /* index into nrtk_config_t.datum */
+    char msm7[32],msm4[32],near[32];   /* empty: not offered */
+} nrtk_dmount_t;
+
+enum { NRTK_DATUM_INTERP_BARY=0, NRTK_DATUM_INTERP_NEAREST=1 };
+
 typedef struct {
     /* network ---------------------------------------------------------------*/
     char   name[64];
@@ -47,6 +55,15 @@ typedef struct {
     char   antex[1024];
     int    nsta;
     nrtk_station_t sta[NRTK_MAXSTA];
+    /* output datums (datum.h) ----------------------------------------------*/
+    int    ndatum;
+    nrtk_datum_def_t datum[NRTK_MAXDATUM];
+    int    datum_interp;            /* NRTK_DATUM_INTERP_xxx */
+    double datum_extrap_max_km;     /* beyond: nearest point's shift (20) */
+    double datum_cover_km;          /* calibration point this close covers a station without coordinates (10) */
+    char   datum_points_file[1024];
+    int    ndpoint;
+    nrtk_dpoint_t dpoint[NRTK_MAXDPOINT];
     /* processing -----------------------------------------------------------*/
     nrtk_prep_opt_t    prep;
     nrtk_netpos_opt_t  netpos;
@@ -70,6 +87,8 @@ typedef struct {
     int    port;                    /* NTRIP caster port */
     char   mount_msm7[32],mount_msm4[32],mount_near[32];
     int    enable_near;
+    int    ndmount;
+    nrtk_dmount_t dmount[NRTK_MAXDATUM];
     double gga_timeout_s;           /* close if no valid GGA (15) */
     double nodata_close_s;          /* close if no VRS can be generated (10) */
     double sync_window_s;           /* epoch wait window (0.5) */
@@ -92,6 +111,7 @@ int  nrtk_config_load(const char *file, nrtk_config_t *cfg, char *err, int errle
 /* semantic validation. returns number of errors (messages in err) */
 int  nrtk_config_validate(const nrtk_config_t *cfg, char *err, int errlen);
 int  nrtk_config_station(const nrtk_config_t *cfg, const char *id);
+int  nrtk_config_datum(const nrtk_config_t *cfg, const char *name);   /* -1: unknown */
 /* parse "YYYY-MM-DD hh:mm:ss" (GPST) */
 int  nrtk_parse_time(const char *s, gtime_t *t);
 

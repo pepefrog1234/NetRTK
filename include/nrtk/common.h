@@ -34,6 +34,8 @@ extern "C" {
 #define NRTK_NSYS         4             /* GPS, Galileo, BeiDou, QZSS */
 #define NRTK_NPROC        3             /* max processing frequencies per system */
 #define NRTK_MAXSATEP     MAXOBS        /* max satellites per station epoch */
+#define NRTK_MAXDATUM     4             /* output datums (frames of the RTCM 1006 position) */
+#define NRTK_MAXDPOINT    256           /* calibration points of the datum shift fields */
 
 /* system index used inside libnrtk */
 enum { NRTK_GPS=0, NRTK_GAL=1, NRTK_BDS=2, NRTK_QZS=3 };
@@ -59,6 +61,38 @@ void   nrtk_sigplan_default(nrtk_sigplan_t plan[NRTK_NSYS]);
 double nrtk_code2freq(int sys, uint8_t code); /* carrier frequency (Hz), 0: n/a */
 int    nrtk_sig_in_list(uint8_t code, const char *list);
 
+/* output datums --------------------------------------------------------------
+ * The network is processed in ITRF (station coordinates at the current epoch,
+ * consistent with the satellite orbits). A rover may ask for its results in a
+ * static legal datum (Taiwan: TWD97[2010], TWD97[2020]); only the RTCM 1006
+ * position is shifted by the datum shift delta = X_official - X_ITRF(t),
+ * interpolated between the stations (see datum.h). Each station therefore
+ * carries its official coordinates in every datum it was tied to.             */
+typedef struct {
+    int    valid;
+    double pos[3];                      /* marker ECEF in the datum (m) */
+    double sigma;                       /* coordinate std (m), 0: unknown */
+    char   source[16];                  /* control-tie | egnss | control-point | theory */
+    char   observed[16];                /* date of the tie (free text) */
+} nrtk_stadatum_t;
+
+typedef struct {
+    char   name[32];                    /* key and mountpoint suffix, e.g. TWD97_2010 */
+    char   label[32];                   /* e.g. TWD97[2010] (sourcetable, status) */
+    char   version[32];                 /* calibration version, e.g. cal-2026.10 */
+    char   frame[16];                   /* theory chain: ITRF frame realized by the datum */
+    double epoch;                       /* theory chain: datum epoch (decimal year) */
+} nrtk_datum_def_t;
+
+/* calibration point: defines the datum shift field only, no observations */
+typedef struct {
+    char   id[16];
+    double pos[3];                      /* ITRF ECEF at coord_epoch (m) */
+    double vel[3];                      /* m/yr */
+    double coord_epoch;
+    nrtk_stadatum_t datum[NRTK_MAXDATUM];
+} nrtk_dpoint_t;
+
 /* reference station ---------------------------------------------------------*/
 typedef struct {
     char   id[16];                      /* station id (4-9 chars) */
@@ -72,6 +106,7 @@ typedef struct {
     char   obsfile[512];                /* offline RINEX OBS file */
     int    rtcm_id;                     /* RTCM station id of the physical station */
     int    enabled;
+    nrtk_stadatum_t datum[NRTK_MAXDATUM]; /* official coordinates per output datum */
 } nrtk_station_t;
 
 /* station marker position at time t (applies velocity), ECEF (m) */

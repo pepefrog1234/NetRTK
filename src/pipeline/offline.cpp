@@ -79,7 +79,8 @@ struct VrsWriter::RtcmState {
 
 VrsWriter::VrsWriter(const nrtk_config_t &cfg, const std::string &dir,
                      const std::string &name, const double *pos, int staid,
-                     const nav_t *nav) : cfg_(cfg)
+                     const nav_t *nav, const double *rtcm_pos, const char *rtcm_datum)
+    : cfg_(cfg)
 {
     memcpy(pos_,pos,sizeof(pos_));
     mkdirs(dir);
@@ -111,6 +112,10 @@ VrsWriter::VrsWriter(const nrtk_config_t &cfg, const std::string &dir,
     for (int i=0;i<3;i++) ropt_.apppos[i]=pos[i];
     snprintf(ropt_.comment[0],sizeof(ropt_.comment[0]),"virtual reference station (network RTK)");
     snprintf(ropt_.comment[1],sizeof(ropt_.comment[1]),"null antenna at marker, ITRF %s",cfg.frame);
+    if (rtcm_pos&&rtcm_datum) {
+        snprintf(ropt_.comment[2],sizeof(ropt_.comment[2]),"RTCM 1006 position in %s (see %s_datum.json)",
+                 rtcm_datum,name.c_str());
+    }
     struct {int rs; int idx;} m[]={{RNX_SYS_GPS,NRTK_GPS},{RNX_SYS_GAL,NRTK_GAL},
                                    {RNX_SYS_CMP,NRTK_BDS},{RNX_SYS_QZS,NRTK_QZS}};
     for (auto &k:m) {
@@ -129,7 +134,7 @@ VrsWriter::VrsWriter(const nrtk_config_t &cfg, const std::string &dir,
         ropt_.nobs[k.rs]=n;
     }
     rs_=new RtcmState;
-    nrtk_rtcmout_init(&rs_->enc,staid,cfg.msm,pos,1);
+    nrtk_rtcmout_init(&rs_->enc,staid,cfg.msm,rtcm_pos?rtcm_pos:pos,1);
 }
 VrsWriter::~VrsWriter() { close(); }
 

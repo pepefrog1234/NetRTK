@@ -25,6 +25,7 @@
 #include "nrtk/pipeline.hpp"
 #include "nrtk/ntrip_front.hpp"
 #include "nrtk/rtcm_out.h"
+#include "nrtk/datum.h"
 
 namespace nrtk {
 
@@ -78,20 +79,33 @@ private:
 
 class RealtimeCore;
 
-/* VRS session (one NTRIP connection) ------------------------------------------*/
+/* VRS session (one NTRIP connection) ------------------------------------------
+ * datum >= 0: mountpoint of an output datum. The VRS is still built in ITRF
+ * (the rover's GGA, which is in the datum, is first moved back to ITRF); only
+ * the RTCM 1006 position of the VRS or of the passed-through station carries
+ * the datum shift. The shift is evaluated when the VRS is built and kept for
+ * its lifetime. A VRS inside a network triangle whose datum shift can only be
+ * extrapolated (a vertex without official coordinates) is datum-incomplete:
+ * the session closes with that reason instead of serving a wrong datum.      */
 class VrsSession : public StreamSession {
 public:
-    VrsSession(RealtimeCore &core, const ClientInfo &ci, int msm, bool nearest_only);
+    VrsSession(RealtimeCore &core, const ClientInfo &ci, int msm, bool nearest_only,
+               int datum=-1);
     ~VrsSession() override;
     void on_gga(const GgaFix &fix) override;
     bool on_epoch(const void *epoch, std::vector<uint8_t> &out) override;
     std::string status_json() const override;
 private:
     void build_vrs(const double *pos);
+    bool datum_pos(const double *pos_itrf, int cell_ok, const int *tri, double *out);  /* 1006 position */
     RealtimeCore &core_;
     ClientInfo ci_;
     int msm_;
     bool nearest_only_;
+    int datum_;
+    double delta_[3]={0,0,0};
+    nrtk_datum_info_t dinfo_{};
+    bool closing_=false;
     GgaFix fix_;
     bool have_fix_=false;
     double vpos_[3]={0,0,0};
@@ -120,6 +134,8 @@ public:
     Network &network() {return *net_;}
     const Clock &clock() const {return clk_;}
     EpochBus<NetEpoch> &bus() {return bus_;}
+    /* shift field of output datum i (immutable, shared by the sessions) */
+    const nrtk_datum_t *datum(int i) const {return i>=0&&i<(int)datums_.size()?datums_[i]:nullptr;}
     std::shared_ptr<const nav_t> nav_snapshot();
     std::string status_json(const std::vector<NtripServer::ClientStatus> &clients);
     std::string metrics(const std::vector<NtripServer::ClientStatus> &clients);
@@ -139,6 +155,7 @@ private:
     nrtk_config_t cfg_;
     const nrtk_atx_t *atx_;
     std::unique_ptr<Network> net_;
+    std::vector<nrtk_datum_t *> datums_;
     Clock clk_;
     std::unique_ptr<EpochSync> sync_;
     EpochBus<NetEpoch> bus_;

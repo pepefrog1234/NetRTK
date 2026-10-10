@@ -1,6 +1,7 @@
 /*------------------------------------------------------------------------------
  * config.cpp : YAML configuration loading and validation (yaml-cpp)
  *----------------------------------------------------------------------------*/
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -67,6 +68,61 @@ bool get_pos(const YAML::Node &n, double *ecef)
     }
     return false;
 }
+/* official coordinates of a marker in the output datums:
+ *   datum: {TWD97_2010: {ecef: [...], source: control-tie, observed: 2026-09-20, sigma_m: 0.015}} */
+bool get_datums(const YAML::Node &n, const nrtk_config_t *c, const char *who,
+                nrtk_stadatum_t *out, char *err, int errlen)
+{
+    YAML::Node dn=n["datum"];
+    if (!dn) return true;
+    if (!dn.IsMap()) {snprintf(err,errlen,"%s: datum must be a map of datum names",who); return false;}
+    for (auto it:dn) {
+        std::string name=it.first.as<std::string>();
+        int k=nrtk_config_datum(c,name.c_str());
+        if (k<0) {
+            snprintf(err,errlen,"%s: datum %s is not in network.output_datums",who,name.c_str());
+            return false;
+        }
+        nrtk_stadatum_t *d=out+k;
+        memset(d,0,sizeof(*d));
+        if (!get_pos(it.second,d->pos)) {
+            snprintf(err,errlen,"%s: datum %s needs ecef or llh",who,name.c_str());
+            return false;
+        }
+        get(it.second,"sigma_m",d->sigma);
+        get_str(it.second,"source",d->source,sizeof(d->source));
+        get_str(it.second,"observed",d->observed,sizeof(d->observed));
+        d->valid=1;
+    }
+    return true;
+}
+/* calibration points file: a sequence (or {points: [...]}) of
+ *   {id, ecef|llh, epoch, velocity, datum: {...}} */
+bool load_dpoints(const char *file, nrtk_config_t *c, char *err, int errlen)
+{
+    YAML::Node y=YAML::LoadFile(file);
+    YAML::Node seq=y.IsSequence()?y:y["points"];
+    if (!seq||!seq.IsSequence()) {
+        snprintf(err,errlen,"%s: expected a sequence of points",file); return false;
+    }
+    c->ndpoint=0;
+    for (auto n:seq) {
+        if (c->ndpoint>=NRTK_MAXDPOINT) {snprintf(err,errlen,"%s: too many points",file); return false;}
+        nrtk_dpoint_t *p=c->dpoint+c->ndpoint;
+        memset(p,0,sizeof(*p));
+        if (!get_str(n,"id",p->id,sizeof(p->id))) {snprintf(err,errlen,"%s: point without id",file); return false;}
+        if (!get_pos(n,p->pos)) {
+            snprintf(err,errlen,"%s: point %s: ecef or llh (ITRF) required",file,p->id); return false;
+        }
+        if (n["velocity"]) for (int i=0;i<3;i++) p->vel[i]=n["velocity"][i].as<double>();
+        p->coord_epoch=c->coord_epoch;
+        get(n,"epoch",p->coord_epoch);
+        std::string who=std::string(file)+": point "+p->id;
+        if (!get_datums(n,c,who.c_str(),p->datum,err,errlen)) return false;
+        c->ndpoint++;
+    }
+    return true;
+}
 
 } // namespace
 
@@ -111,6 +167,9 @@ extern "C" void nrtk_config_default(nrtk_config_t *c)
     c->allow_anonymous=1;
     c->max_conn_per_user=4;
     c->replay_speed=1.0;
+    c->datum_interp=NRTK_DATUM_INTERP_BARY;
+    c->datum_extrap_max_km=20.0;
+    c->datum_cover_km=10.0;
 }
 
 extern "C" int nrtk_config_load(const char *file, nrtk_config_t *c, char *err,
@@ -132,6 +191,49 @@ extern "C" int nrtk_config_load(const char *file, nrtk_config_t *c, char *err,
         get(nw,"lsm_radius_km",c->cell.lsm_radius_km);
         get(nw,"max_aux",c->cell.max_aux);
         get_str(nw,"antex",c->antex,sizeof(c->antex));
+
+        /* output datums: [{name, label, version, frame, epoch}] */
+        c->ndatum=0;
+        if (nw&&nw["output_datums"]) {
+            for (auto n:nw["output_datums"]) {
+                if (c->ndatum>=NRTK_MAXDATUM) {snprintf(err,errlen,"too many output_datums (max %d)",NRTK_MAXDATUM); return 0;}
+                nrtk_datum_def_t *d=c->datum+c->ndatum;
+                memset(d,0,sizeof(*d));
+                if (n.IsScalar()) copy(d->name,sizeof(d->name),n.as<std::string>());
+                else {
+                    get_str(n,"name",d->name,sizeof(d->name));
+                    get_str(n,"label",d->label,sizeof(d->label));
+                    get_str(n,"version",d->version,sizeof(d->version));
+                    get_str(n,"frame",d->frame,sizeof(d->frame));
+                    get(n,"epoch",d->epoch);
+                }
+                if (!d->name[0]) {snprintf(err,errlen,"output_datums: name required"); return 0;}
+                for (const char *p=d->name;*p;p++) {
+                    if (!isalnum((unsigned char)*p)&&*p!='_') {
+                        snprintf(err,errlen,"output_datums: name %s: letters, digits and _ only",d->name);
+                        return 0;
+                    }
+                }
+                if (nrtk_config_datum(c,d->name)>=0) {snprintf(err,errlen,"output_datums: duplicate %s",d->name); return 0;}
+                /* defaults of the theory chain for the Taiwan datums */
+                if (!d->frame[0]) {
+                    if (!strcmp(d->name,"TWD97_2010")) {strcpy(d->frame,"ITRF94"); d->epoch=2010.0;}
+                    else if (!strcmp(d->name,"TWD97_2020")) {strcpy(d->frame,"ITRF2014"); d->epoch=2020.0;}
+                    else if (!strcmp(d->name,"TWD97")) {strcpy(d->frame,"ITRF94"); d->epoch=1997.0;}
+                }
+                if (!d->label[0]) copy(d->label,sizeof(d->label),d->name);
+                c->ndatum++;
+            }
+        }
+        if (nw&&nw["datum_interp"]) {
+            s=nw["datum_interp"].as<std::string>();
+            if (s=="barycentric") c->datum_interp=NRTK_DATUM_INTERP_BARY;
+            else if (s=="nearest") c->datum_interp=NRTK_DATUM_INTERP_NEAREST;
+            else {snprintf(err,errlen,"network.datum_interp must be barycentric or nearest"); return 0;}
+        }
+        get(nw,"datum_extrap_max_km",c->datum_extrap_max_km);
+        get(nw,"datum_cover_km",c->datum_cover_km);
+        get_str(nw,"datum_points_file",c->datum_points_file,sizeof(c->datum_points_file));
 
         /* stations */
         c->nsta=0;
@@ -158,9 +260,12 @@ extern "C" int nrtk_config_load(const char *file, nrtk_config_t *c, char *err,
                 get_str(n,"rinex",st->obsfile,sizeof(st->obsfile));
                 get(n,"rtcm_id",st->rtcm_id);
                 get_bool(n,"enabled",st->enabled);
+                std::string who=std::string("station ")+st->id;
+                if (!get_datums(n,c,who.c_str(),st->datum,err,errlen)) return 0;
                 c->nsta++;
             }
         }
+        if (c->datum_points_file[0]&&!load_dpoints(c->datum_points_file,c,err,errlen)) return 0;
         /* solver */
         YAML::Node sv=y["solver"];
         if (sv&&sv["systems"]) {
@@ -281,6 +386,28 @@ extern "C" int nrtk_config_load(const char *file, nrtk_config_t *c, char *err,
         get_str(se,"mount_msm4",c->mount_msm4,sizeof(c->mount_msm4));
         get_str(se,"mount_nearest",c->mount_near,sizeof(c->mount_near));
         get_bool(se,"nearest_mountpoint",c->enable_near);
+        /* datum_mounts: [{datum: TWD97_2010, msm7: VRS_MSM7_TWD97_2010, msm4: ..., nearest: ...}] */
+        c->ndmount=0;
+        if (se&&se["datum_mounts"]) {
+            for (auto n:se["datum_mounts"]) {
+                if (c->ndmount>=NRTK_MAXDATUM) break;
+                nrtk_dmount_t *m=c->dmount+c->ndmount;
+                memset(m,0,sizeof(*m));
+                if (!get(n,"datum",s)) {snprintf(err,errlen,"server.datum_mounts: datum required"); return 0;}
+                if ((m->datum=nrtk_config_datum(c,s.c_str()))<0) {
+                    snprintf(err,errlen,"server.datum_mounts: datum %s is not in network.output_datums",s.c_str());
+                    return 0;
+                }
+                /* defaults: <mount>_<datum name> */
+                snprintf(m->msm7,sizeof(m->msm7),"%s_%s",c->mount_msm7,s.c_str());
+                snprintf(m->msm4,sizeof(m->msm4),"%s_%s",c->mount_msm4,s.c_str());
+                snprintf(m->near,sizeof(m->near),"%s_%s",c->mount_near,s.c_str());
+                get_str(n,"msm7",m->msm7,sizeof(m->msm7));
+                get_str(n,"msm4",m->msm4,sizeof(m->msm4));
+                get_str(n,"nearest",m->near,sizeof(m->near));
+                c->ndmount++;
+            }
+        }
         get(se,"gga_timeout_s",c->gga_timeout_s);
         get(se,"no_data_close_s",c->nodata_close_s);
         get(se,"sync_window_s",c->sync_window_s);
@@ -318,6 +445,11 @@ extern "C" int nrtk_config_station(const nrtk_config_t *c, const char *id)
     for (int i=0;i<c->nsta;i++) if (!strcmp(c->sta[i].id,id)) return i;
     return -1;
 }
+extern "C" int nrtk_config_datum(const nrtk_config_t *c, const char *name)
+{
+    for (int i=0;i<c->ndatum;i++) if (!strcmp(c->datum[i].name,name)) return i;
+    return -1;
+}
 
 extern "C" int nrtk_config_validate(const nrtk_config_t *c, char *err, int errlen)
 {
@@ -337,6 +469,41 @@ extern "C" int nrtk_config_validate(const nrtk_config_t *c, char *err, int errle
             }
         }
         if (s->rtcm_id<0||s->rtcm_id>4095) add(std::string("station ")+s->id+": rtcm_id out of range");
+        /* official datum coordinates: within 5 m of ITRF (a wrong version, unit or
+           marker would be metres or kilometres off) */
+        for (int k=0;k<c->ndatum;k++) {
+            if (!s->datum[k].valid) continue;
+            double dd=nrtk_dist(s->datum[k].pos,s->pos);
+            if (dd>5.0) {
+                char b[160];
+                snprintf(b,sizeof(b),"station %s: %s coordinates %.1f m from the ITRF position",
+                         s->id,c->datum[k].name,dd);
+                add(b);
+            }
+        }
+    }
+    for (int i=0;i<c->ndpoint;i++) {
+        const nrtk_dpoint_t *p=c->dpoint+i;
+        double r=norm(p->pos,3);
+        if (r<6.3E6||r>6.4E6) add(std::string("datum point ")+p->id+": position not on earth surface");
+        if (nrtk_config_station(c,p->id)>=0) add(std::string("datum point ")+p->id+": same id as a station");
+        for (int j=0;j<i;j++) if (!strcmp(c->dpoint[j].id,p->id)) add(std::string("duplicate datum point ")+p->id);
+        int nd=0;
+        for (int k=0;k<c->ndatum;k++) {
+            if (!p->datum[k].valid) continue;
+            nd++;
+            if (nrtk_dist(p->datum[k].pos,p->pos)>5.0) {
+                add(std::string("datum point ")+p->id+": "+c->datum[k].name+" coordinates far from ITRF");
+            }
+        }
+        if (!nd) add(std::string("datum point ")+p->id+": no datum coordinates");
+    }
+    if (c->datum_extrap_max_km<0.0) add("network.datum_extrap_max_km must be >= 0");
+    if (c->datum_cover_km<0.0) add("network.datum_cover_km must be >= 0");
+    for (int i=0;i<c->ndmount;i++) for (int j=0;j<i;j++) {
+        if (c->dmount[i].datum==c->dmount[j].datum) {
+            add(std::string("server.datum_mounts: datum ")+c->datum[c->dmount[i].datum].name+" listed twice");
+        }
     }
     if (c->msm!=4&&c->msm!=7) add("output.msm must be 4 or 7");
     if (c->netpos.ar_ratio<1.0) add("solver.ar_ratio must be >= 1");

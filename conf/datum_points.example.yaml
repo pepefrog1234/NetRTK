@@ -1,0 +1,21 @@
+# Calibration points of the output datum shift fields (network.datum_points_file).
+# A point takes no part in the network solution; it only adds a vertex to the
+# triangulation of a datum's shift field, delta = X_official - X_ITRF(t). Use them
+# on both sides of a fault (Longitudinal Valley), to densify an area re-surveyed
+# after an earthquake, and at the edge of the service area. A point needs its
+# ITRF position (measured with this network in ITRF mode, with epoch and velocity)
+# and the published coordinates in at least one datum; a datum without an entry
+# simply does not use the point.
+points:
+  - id: GC01
+    ecef: [-2958012.345, 4998765.432, 2601234.567]     # ITRF2020 at `epoch` (or llh)
+    epoch: 2026.74
+    velocity: [-0.0107, 0.0269, 0.0]                    # m/yr (optional)
+    datum:
+      TWD97_2010: {ecef: [-2958012.653, 4998765.078, 2601234.133], source: control-point, observed: 2026-09-21}
+      TWD97_2020: {ecef: [-2958012.534, 4998765.263, 2601234.276], source: control-point, observed: 2026-09-21}
+  - id: GC02
+    llh: [24.9012345, 121.0123456, 45.678]
+    epoch: 2026.74
+    datum:
+      TWD97_2010: {llh: [24.9012310, 121.0123490, 45.650], source: control-point}

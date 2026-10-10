@@ -566,3 +566,33 @@ JSAN LGU2 GAIS SHWA ALIS CHIA 停用當留一（`conf/tw/tw_all_30s_bigtri_cmp.y
 書的 70 km 以內：這一帶至少要加嘉義／南投、高雄／屏東各一站，再加一個山區站，才有備援與可內插
 的格網。附帶修正：`tools/loo_validate.py` 在 rover 或基站沒有曆元的時段（`rnx2rtkp` 不寫輸出檔）
 原本會因找不到 `_segNN.pos` 而中斷，現在視為該段未固定。
+
+
+## 10. 坐標基準轉換（ITRF → TWD97[2010]／TWD97[2020]）的軟體檢核
+
+設計文件第 8 章的四層驗證中，δ 場內部一致性與理論對照可以在軟體內做；控制點檢測與 e-GNSS 比對需要
+實體 rover 與官方控制點成果，未做。本專案的三個真實站網（香港 SatRef、台灣 GDMS 北部環、大三角）
+都沒有站的 TWD97 官方座標（GDMS 站座標是本專案自己平差出來的 ITRF 座標，見 §9.1），所以真實資料
+上的 δ 場無從建立；以下全部以合成站網驗證**軟體正確性**，δ 場本身是以理論鏈（方法 B）加上逐站
+不同的合成速度產生的（`conf/realtime_replay.yaml`、`conf/sim/tw_quiet_network.yaml`，
+`source: theory`），不代表任何真實基準。
+
+| 檢核 | 方法 | 結果 |
+| --- | --- | --- |
+| Helmert 參數 | ITRF2020 → ITRF94@2010.0 在台灣的效果 | 北 −5.5、東 +0.3、高 −0.7 cm（設計文件值）；→ ITRF2014@2020.0 < 5 mm |
+| 理論鏈兩套實作 | C（`nrtk_datum_theory`）對獨立的 Python 實作（產生合成座標用） | 5 站兩基準 A−B 全部 ≤ 1 mm |
+| TM2 | Krüger n⁴ 對 Snyder 級數（4 點本島、1 點澎湖）與數值積分的子午線弧長 | < 1 mm |
+| 重心內插 | 線性 δ 場（ECEF）在 4 站 2 個三角形內 5 個點與外插點 | 誤差 < 0.02 mm；邊兩側 1 m 的值差 < 0.1 mm（非線性場） |
+| 反向轉換 | 基準 → ITRF 兩次疊代 | 往返 < 1 mm |
+| 留一內插 | 合成 5 站 | 內部站 TWE5 的留一殘差 E 4.8 N 6.4 U 1.4 mm（2010）、1.9／2.5／0.6 mm（2020）；外圍 4 站只能外插，不列入 |
+| δ(2020) − δ(2010) | 5 站 | E +0.284 N −0.067 U +0.008 m，站間散布 1–2 cm（合成速度場 ×（2020−2010）年） |
+| 端到端（重播伺服器） | 同一個整數 ECEF 位置 P 以 ITRF、TWD97_2010、TWD97_2020 三個掛載點連線 40 s（GGA 各在其基準） | ITRF 的 1006 = P（0.0000 m）；兩個基準的 1006 與 `datum at --time <重播時間>` 算出的座標差 0.0000 m（1006 解析度 0.1 mm）；168 則 MSM 在站號之後逐位元相同；`/status` 的 session 帶基準、TM2、δ |
+| 不完整格網 | 中央站 TWE5 沒有 TWD97 座標（在每個三角形內） | `/status` 的 `datums[].status = incomplete`、`missing_stations` 列出 TWE5；網內 rover 連 TWD97 掛載點在第一筆 GGA 後被關閉（`close_datum_incomplete`），同一 rover 連 ITRF 掛載點正常；網外 30 km 的 rover 照常服務並標記 `nearest`、外插距離 29 km |
+| 聯測工具 | 合成 3 個控制點，其中一個基線含 5 cm 錯誤 | 中位數初值抓到離群值並剔除，兩個基準的站座標與真值相同到 0.1 mm；用平均值當初值時 5 cm 錯誤分攤成三個 < 3 cm 的殘差而不會被抓到（已修正） |
+| 離線 | `nrtk-gen --datum TWD97_2010` | RTCM 1006 在基準（DF141 = 1），RINEX 檔頭仍為 ITRF 並加註，`_datum.json` 記錄 δ 與使用的點 |
+
+單元測試：`tests/test_datum.cpp`（7 個）與 `tests/test_config.cpp` 的 `Config.OutputDatums`。
+
+**未做、需要外業的部分**：各站的官方座標（控制點聯測或 e-GNSS）、≥ 10 個未用於校正的控制點的
+RTK 檢測（水平 ≤ 3 cm、高程 ≤ 5 cm）、與 e-GNSS 轉換結果的比對、rover 跨格網時的實測連續性、
+斷層兩側的校正點與地震後流程（設計文件第 8–9 章）。

@@ -174,11 +174,15 @@ private:
     bool ok_=false,first_=true;
 };
 
-/* VRS writers for offline jobs (RINEX 3.04, RTCM 3, diagnostics CSV) --------*/
+/* VRS writers for offline jobs (RINEX 3.04, RTCM 3, diagnostics CSV) --------
+ * rtcm_pos: position written to RTCM 1006 when it differs from the VRS
+ * position (output datum, see datum.h); the RINEX header keeps the ITRF
+ * position. rtcm_datum: its label for the RINEX comment.                   */
 class VrsWriter {
 public:
     VrsWriter(const nrtk_config_t &cfg, const std::string &dir, const std::string &name,
-              const double *pos, int staid, const nav_t *nav);
+              const double *pos, int staid, const nav_t *nav,
+              const double *rtcm_pos=nullptr, const char *rtcm_datum=nullptr);
     ~VrsWriter();
     void write(const NetEpoch &ep, const VrsOutput &out);
     void close();

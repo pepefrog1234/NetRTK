@@ -12,7 +12,8 @@ foreach(f IN ITEMS
     ingest/ingest.c
     netpos/netpos.c
     vrsgen/vrsgen.c
-    rtcm_out/rtcm_out.c)
+    rtcm_out/rtcm_out.c
+    datum/datum.c)
   if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/${f})
     list(APPEND NRTK_C_SOURCES ${f})
   endif()

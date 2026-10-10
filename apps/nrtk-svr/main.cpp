@@ -4,12 +4,15 @@
  *   nrtk-svr -c config.yaml [-p port] [-v level] [--json-log]
  *
  * Mountpoints: <mount_msm7> (VRS, MSM7), <mount_msm4> (VRS, MSM4) and,
- * if enabled, <mount_nearest> (nearest station pass-through). HTTP GET
+ * if enabled, <mount_nearest> (nearest station pass-through), all with the
+ * RTCM 1006 position in ITRF; plus, per server.datum_mounts entry, the same
+ * three with the 1006 position in an output datum (datum.h). HTTP GET
  * /status returns JSON, /metrics Prometheus text.
  *----------------------------------------------------------------------------*/
 #include <csignal>
 #include <cstdio>
 #include <cstring>
+#include <map>
 #include <memory>
 #include "nrtk/realtime.hpp"
 #include "../common_cli.hpp"
@@ -57,14 +60,32 @@ int main(int argc, char **argv)
     const char *names[]={"GPS","GAL","BDS","QZS"};
     for (int i=0;i<NRTK_NSYS;i++) if (cfg->vrs.sysmask&(1<<i)) sys+=std::string(sys.empty()?"":"+")+names[i];
     std::vector<MountPoint> mounts;
-    auto mk=[&](const char *name, const char *id, const char *det, bool gga){
+    struct Desc { int msm; bool nearest; int datum; };
+    std::map<std::string,Desc> desc;             /* mountpoint -> session parameters */
+    const char *det7="1006(10),1033(10),1077(1),1097(1),1127(1),1117(1)";
+    const char *det4="1006(10),1033(10),1074(1),1094(1),1124(1),1114(1)";
+    auto mk=[&](const std::string &name, const std::string &id, const char *det, Desc d){
+        if (name.empty()||desc.count(name)) return;
         MountPoint m; m.name=name; m.identifier=id; m.format="RTCM 3.3"; m.format_details=det;
-        m.nav_system=sys; m.network=cfg->name; m.country="TWN"; m.lat=lat; m.lon=lon; m.need_gga=gga;
+        m.nav_system=sys; m.network=cfg->name; m.country="TWN"; m.lat=lat; m.lon=lon; m.need_gga=true;
         mounts.push_back(m);
+        desc[name]=d;
     };
-    mk(cfg->mount_msm7,"VRS","1006(10),1033(10),1077(1),1097(1),1127(1),1117(1)",true);
-    mk(cfg->mount_msm4,"VRS","1006(10),1033(10),1074(1),1094(1),1124(1),1114(1)",true);
-    if (cfg->enable_near) mk(cfg->mount_near,"NEAREST","1006(10),1033(10),1077(1),1097(1),1127(1),1117(1)",true);
+    mk(cfg->mount_msm7,std::string("VRS ")+cfg->frame,det7,{7,false,-1});
+    mk(cfg->mount_msm4,std::string("VRS ")+cfg->frame,det4,{4,false,-1});
+    if (cfg->enable_near) mk(cfg->mount_near,std::string("NEAREST ")+cfg->frame,det7,{7,true,-1});
+    for (int i=0;i<cfg->ndmount;i++) {       /* same streams, 1006 position in a legal datum */
+        const nrtk_dmount_t &dm=cfg->dmount[i];
+        const nrtk_datum_def_t &dd=cfg->datum[dm.datum];
+        std::string id=std::string(dd.label)+(dd.version[0]?std::string(" ")+dd.version:"");
+        if (!core.datum(dm.datum)||nrtk_datum_ntri(core.datum(dm.datum))==0) {
+            nrtk_log(NRTK_LOG_WARN,"svr","datum %s has fewer than 3 points with coordinates: "
+                     "its mountpoints serve the nearest point's shift only",dd.name);
+        }
+        mk(dm.msm7,"VRS "+id,det7,{7,false,dm.datum});
+        mk(dm.msm4,"VRS "+id,det4,{4,false,dm.datum});
+        if (cfg->enable_near) mk(dm.near,"NEAREST "+id,det7,{7,true,dm.datum});
+    }
 
     NtripServerOptions so;
     so.port=cfg->port;
@@ -75,13 +96,12 @@ int main(int argc, char **argv)
         UserAccount u; u.user=cfg->user[i].user; u.pass=cfg->user[i].pass; u.max_conn=cfg->user[i].max_conn;
         so.users.push_back(u);
     }
-    std::string m7=cfg->mount_msm7,m4=cfg->mount_msm4,mn=cfg->mount_near;
     NtripServer *srvp=nullptr;
     auto factory=[&](const ClientInfo &ci)->std::unique_ptr<StreamSession>{
-        if (ci.mount==m7) return std::unique_ptr<StreamSession>(new VrsSession(core,ci,7,false));
-        if (ci.mount==m4) return std::unique_ptr<StreamSession>(new VrsSession(core,ci,4,false));
-        if (ci.mount==mn&&cfg->enable_near) return std::unique_ptr<StreamSession>(new VrsSession(core,ci,7,true));
-        return nullptr;
+        auto it=desc.find(ci.mount);
+        if (it==desc.end()) return nullptr;
+        const Desc &d=it->second;
+        return std::unique_ptr<StreamSession>(new VrsSession(core,ci,d.msm,d.nearest,d.datum));
     };
     auto wait_epoch=[&](uint64_t *seq,int timeout_ms)->std::shared_ptr<const void>{
         return core.bus().wait(seq,timeout_ms);
@@ -99,8 +119,11 @@ int main(int argc, char **argv)
         core.stop();
         return 1;
     }
-    nrtk_log(NRTK_LOG_INFO,"svr","NTRIP caster on port %d, mountpoints %s %s%s%s",srv.port(),
-             m7.c_str(),m4.c_str(),cfg->enable_near?" ":"",cfg->enable_near?mn.c_str():"");
+    {
+        std::string names;
+        for (auto &m:mounts) names+=(names.empty()?"":" ")+m.name;
+        nrtk_log(NRTK_LOG_INFO,"svr","NTRIP caster on port %d, mountpoints %s",srv.port(),names.c_str());
+    }
     int k=0;
     while (!g_stop) {
         std::this_thread::sleep_for(std::chrono::milliseconds(200));

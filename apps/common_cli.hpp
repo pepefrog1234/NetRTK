@@ -11,6 +11,7 @@ namespace nrtk {
 
 struct CliOpts {
     std::string conf, outdir, ts, te, job;
+    std::string datum;          /* nrtk-gen: output datum of the RTCM 1006 position */
     double dur=0.0, tint=0.0;
     int verbose=NRTK_LOG_INFO;
     bool satcsv=false;
@@ -30,6 +31,7 @@ inline bool parse_cli(int argc, char **argv, CliOpts &o, const char *usage)
         else if (a=="-j") o.job=val();
         else if (a=="-v") o.verbose=atoi(val().c_str());
         else if (a=="--sat-csv") o.satcsv=true;
+        else if (a=="--datum") o.datum=val();
         else if (a=="-h"||a=="--help") {fputs(usage,stdout); exit(0);}
         else {fprintf(stderr,"unknown option %s\n%s",a.c_str(),usage); return false;}
     }

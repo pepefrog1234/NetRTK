@@ -26,7 +26,9 @@ const char *usage=
 "usage: nrtk-tools obscmp -c config.yaml -s STATION -v vrs.obs [-o res.csv] [-e elmin_deg]\n"
 "                         [-j jump_m]  (new arc on an unflagged DD jump, 0: off; default 0.05)\n"
 "         compare VRS observations with the real observations of STATION\n"
-"         (rinex file and antenna taken from the configuration)\n";
+"         (rinex file and antenna taken from the configuration)\n"
+"       nrtk-tools datum check|at|theory|tie ...   output datum shift fields (datum.h)\n"
+"       nrtk-tools confjson config.yaml\n";
 
 struct Sample { gtime_t t; double el,ph,cd; };
 struct Arc { int sat; uint8_t code; double lam; std::vector<Sample> s; };
@@ -261,6 +263,8 @@ int confjson(int argc, char **argv)
     return 0;
 }
 
+int datum_cmd(int argc, char **argv);     /* datum_cmd.cpp */
+
 int main(int argc, char **argv)
 {
     if (argc<2) {fputs(usage,stderr); return 2;}
@@ -268,6 +272,7 @@ int main(int argc, char **argv)
     std::string cmd=argv[1];
     if (cmd=="obscmp") return obscmp(argc,argv);
     if (cmd=="confjson") return confjson(argc,argv);
+    if (cmd=="datum") return datum_cmd(argc,argv);
     fputs(usage,stderr);
     return 2;
 }

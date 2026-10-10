@@ -12,6 +12,19 @@ network:
   lsm_radius_km: 50           # extra aux stations within this radius of the VRS (LSM)
   max_aux: 6
   antex: data/igs20.atx       # receiver antenna calibrations (multi-GNSS PCO/PCV)
+  # Output datums (docs/ARCHITECTURE.md "坐標基準"): the network stays in ITRF; mountpoints
+  # listed under server.datum_mounts shift only the RTCM 1006 position to a static legal
+  # datum by a vector field interpolated between the stations' official coordinates.
+  output_datums:
+    - {name: TWD97_2010, label: "TWD97[2010]", version: cal-2026.10}   # frame/epoch default ITRF94 @ 2010.0
+    - {name: TWD97_2020, label: "TWD97[2020]", version: cal-2026.10}   # ITRF2014 @ 2020.0
+  datum_interp: barycentric   # barycentric (linear in the triangles, continuous) | nearest
+  datum_extrap_max_km: 20     # outside the points: plane of the nearest triangle up to this
+                              # distance, farther the nearest point's shift
+  datum_cover_km: 10          # a calibration point this close to a station without official
+                              # coordinates stands in for it; otherwise the station's cells are
+                              # datum-incomplete and the datum mountpoints refuse service there
+  # datum_points_file: conf/datum_points.yaml   # calibration points (see conf/datum_points.example.yaml)
 
 stations:
   - id: STA1
@@ -19,6 +32,10 @@ stations:
     velocity: [0.0, 0.0, 0.0] # m/yr, applied from `epoch` (optional)
     antenna: "SEPCHOKE_B3E6  NONE"   # IGS type + radome (as in igs20.atx)
     arp_height_m: 0.0         # ARP above marker (or arp_enu_m: [e, n, u])
+    datum:                    # the marker's official coordinates per output datum (optional per
+                              # station; a cell with a station lacking them is datum-incomplete)
+      TWD97_2010: {ecef: [-2956000.431, 5000000.102, 2600000.355], source: control-tie, observed: 2026-09-20, sigma_m: 0.015}
+      TWD97_2020: {ecef: [-2956000.312, 5000000.287, 2600000.498], source: control-tie, observed: 2026-09-20, sigma_m: 0.015}
     stream: ntrip://user:pass@caster:2101/STA1   # real time: ntrip:// tcpcli:// serial:// file:// rinex://
     rinex: data/STA1_20262700000_01D_01S_MO.rnx  # offline (nrtk-net / nrtk-gen)
     rtcm_id: 101              # station id used for nearest-station pass-through
@@ -92,6 +109,10 @@ server:                       # nrtk-svr (spec ch.8 / ch.11)
   mount_msm4: VRS_MSM4
   mount_nearest: NEAR
   nearest_mountpoint: true
+  datum_mounts:               # same VRS streams, RTCM 1006 position in the datum; names default
+                              # to <mount>_<datum>; an empty name disables that mountpoint
+    - {datum: TWD97_2010, msm7: VRS_MSM7_TWD97_2010, msm4: VRS_MSM4_TWD97_2010, nearest: NEAR_TWD97_2010}
+    - {datum: TWD97_2020, msm7: VRS_MSM7_TWD97_2020, msm4: VRS_MSM4_TWD97_2020, nearest: NEAR_TWD97_2020}
   gga_timeout_s: 15           # close if no valid GGA after connecting
   no_data_close_s: 10         # close if no VRS can be generated
   sync_window_s: 0.5          # epoch wait window for late stations

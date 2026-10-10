@@ -11,7 +11,7 @@
   `/status` JSON、`/metrics` Prometheus）
 - **nrtk-net**：網路解算 CLI（固定率報表、逐衛星殘差）
 - **nrtk-sim**：多站 GNSS 觀測量模擬器（含真值），供開發與回歸測試
-- **nrtk-tools**、`tools/*.py`：留一法驗證、觀測量層比對、即時測試用 NTRIP client
+- **nrtk-tools**、`tools/*.py`：留一法驗證、觀測量層比對、輸出基準（TWD97）δ 場檢核與聯測、即時測試用 NTRIP client
 
 > 規格書要求避免以 VRS 商標命名產品，專案名稱暫定為 `nrtk`（network RTK）。
 
@@ -155,6 +155,23 @@ python3 tools/ntrip_client.py --port 2101 --mount VRS_MSM7 --llh 24.78 121.15 25
 
 狀態頁：`curl http://localhost:2101/status`、`curl http://localhost:2101/metrics`。
 
+### 4. 法定基準的掛載點（TWD97[2010]／TWD97[2020]）
+
+網路解算留在 ITRF；`server.datum_mounts` 列出的掛載點（示範設定為 `VRS_MSM7_TWD97_2010`、
+`VRS_MSM7_TWD97_2020` 等）只把 RTCM 1006 的參考位置平移到該基準，平移量 δ 是以各站官方座標
+定義、在站網三角形內線性內插的向量場（`docs/ARCHITECTURE.md` §9）。rover 端須設為「不做基準轉換」。
+示範設定的 TWD97 座標是以理論鏈產生的合成值；真實站網以控制點聯測取得：
+
+```bash
+./build/bin/nrtk-tools datum check -c conf/realtime_replay.yaml
+```
+
+```bash
+./build/bin/nrtk-tools datum at -c conf/realtime_replay.yaml --llh 24.78 121.15 250
+```
+
+離線檔案：`./build/bin/nrtk-gen -c conf/sim/tw_quiet_network.yaml --datum TWD97_2010`。
+
 ## 設定檔
 
 所有鍵與預設值見 [`conf/example.yaml`](conf/example.yaml)（規格書第 8 章的範例可直接使用）。
@@ -164,7 +181,7 @@ python3 tools/ntrip_client.py --port 2101 --mount VRS_MSM7 --llh 24.78 121.15 25
 ```
 apps/        nrtk-sim nrtk-net nrtk-gen nrtk-svr nrtk-tools
 include/nrtk 公開標頭（C API；C++ 管線/即時/NTRIP 為 .hpp）
-src/         common ingest netpos atmos cellmgr vrsgen rtcm_out config pipeline ntrip_front
+src/         common ingest netpos atmos cellmgr vrsgen rtcm_out datum config pipeline ntrip_front
 tests/       GoogleTest 單元測試、回歸測試（tests/regression）
 tools/       驗證與分析腳本（Python）
 conf/        範例與測試設定（sim/、hk/）

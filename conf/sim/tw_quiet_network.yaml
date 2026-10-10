@@ -4,34 +4,61 @@ network:
   frame: ITRF2020
   epoch: 2026.7200
   max_baseline_km: 70
+  # Output datums of the demo (docs/ARCHITECTURE.md "坐標基準轉換"): the stations' TWD97
+  # coordinates are SYNTHETIC, computed with the theory chain (station velocity + IERS
+  # Helmert) from the simulated ITRF positions, so `nrtk-tools datum theory` reproduces
+  # them exactly; real stations need control-point ties (source: control-tie).
+  output_datums:
+    - {name: TWD97_2010, label: "TWD97[2010]", version: demo-synthetic}
+    - {name: TWD97_2020, label: "TWD97[2020]", version: demo-synthetic}
   antex: data/sim/tw_quiet/nrtksim.atx
 stations:
   - id: TWA1
     ecef: [-3001875.5703, 4946937.8364, 2674117.0167]
+    velocity: [-0.0262, -0.0099, -0.0098]
+    datum:
+      TWD97_2010: {ecef: [-3001875.1434, 4946938.0142, 2674117.1266], source: theory, observed: synthetic}
+      TWD97_2020: {ecef: [-3001875.3947, 4946937.8995, 2674117.0836], source: theory, observed: synthetic}
     antenna: "NRTKSIM_ANT1 NONE"
     arp_height_m: 0.1050
     rinex: data/sim/tw_quiet/TWA1.rnx
     rtcm_id: 101
   - id: TWB2
     ecef: [-2979261.3340, 4974041.8964, 2648941.0335]
+    velocity: [-0.0275, -0.0105, -0.0125]
+    datum:
+      TWD97_2010: {ecef: [-2979260.8838, 4974042.0833, 2648941.1886], source: theory, observed: synthetic}
+      TWD97_2020: {ecef: [-2979261.1491, 4974041.9631, 2648941.1186], source: theory, observed: synthetic}
     antenna: "NRTKSIM_ANT2 NONE"
     arp_height_m: 0.0000
     rinex: data/sim/tw_quiet/TWB2.rnx
     rtcm_id: 102
   - id: TWC3
     ecef: [-3014365.2443, 4957759.8617, 2641116.8368]
+    velocity: [-0.0298, -0.0097, -0.0132]
+    datum:
+      TWD97_2010: {ecef: [-3014364.7568, 4957760.0364, 2641117.0044], source: theory, observed: synthetic}
+      TWD97_2020: {ecef: [-3014365.0443, 4957759.9236, 2641116.9269], source: theory, observed: synthetic}
     antenna: "NRTKSIM_ANT1 NONE"
     arp_height_m: 0.2500
     rinex: data/sim/tw_quiet/TWC3.rnx
     rtcm_id: 103
   - id: TWD4
     ecef: [-2964810.1338, 4963661.6352, 2684105.8766]
+    velocity: [-0.0254, -0.0102, -0.0091]
+    datum:
+      TWD97_2010: {ecef: [-2964809.7202, 4963661.8181, 2684105.9747], source: theory, observed: synthetic}
+      TWD97_2020: {ecef: [-2964809.9636, 4963661.7003, 2684105.9388], source: theory, observed: synthetic}
     antenna: "NRTKSIM_ANT2 NONE"
     arp_height_m: 0.0500
     rinex: data/sim/tw_quiet/TWD4.rnx
     rtcm_id: 104
   - id: TWE5
     ecef: [-2997379.9110, 4959023.8657, 2657073.1018]
+    velocity: [-0.0272, -0.0101, -0.0113]
+    datum:
+      TWD97_2010: {ecef: [-2997379.4667, 4959024.0467, 2657073.2367], source: theory, observed: synthetic}
+      TWD97_2020: {ecef: [-2997379.7284, 4959023.9301, 2657073.1788], source: theory, observed: synthetic}
     antenna: "NRTKSIM_ANT1 NONE"
     arp_height_m: 0.0800
     rinex: data/sim/tw_quiet/TWE5.rnx

@@ -219,7 +219,95 @@ cellmgr ──► atmos ──► vrsgen ──► rtcm_out ──► NTRIP（v1
 - `/status`（JSON）：站、基線、session、處理時間、延遲 p95、session 事件計數；
   `/metrics`（Prometheus）。log 可輸出 JSON lines（`server.log_json`）。
 
-## 9. 已知限制
+## 9. 輸出基準：RTCM 1006 的 ITRF → TWD97[2010]／TWD97[2020] 轉換
+
+依《NetRTK 坐標基準轉換設計》（2026-10-10）實作：`include/nrtk/datum.h`、`src/datum/datum.c`。
+
+### 9.1 為什麼只動 1006
+
+網路解算、大氣內插與虛擬觀測量都留在 ITRF2020 當前曆元：觀測量必須與廣播星曆的框架一致，
+而站座標誤差 dr 會以 −(e^s − e^r)·dr 進入每顆衛星的雙差殘差，10 cm 的站間相對誤差就是最大
+15 cm（0.8 個 L1 波長）的殘差。台灣地表每年移動 3–7 cm 且方向隨地點改變，凍結在 2010.0／2020.0
+的法定座標與 ITRF(t) 差 0.5–1.3 m／0.2–0.5 m，一條 50 km 基線兩端的差異就有 5–30 cm，所以不能
+把基準站座標換成 TWD97。rover 的解是「1006 位置 + 基線向量」：把 1006 平移 δ，rover 的結果就平移
+δ，基線只多出 |δ|·|b|/ρ 的誤差（5 km 重建門檻內 0.3 mm）。MSM 觀測量完全不動，兩個基準的
+掛載點送的是同一份觀測量（實測逐位元相同，VALIDATION §10）。
+
+### 9.2 δ 場
+
+每個輸出基準 D 一個 `nrtk_datum_t`：點集 = 有該基準官方座標的站（不論是否 enabled）+ 校正點
+（`network.datum_points_file`，只定義 δ、不參與解算），各點
+δᵢ(t) = X_official,i − [X_ITRF,i(t₀) + vᵢ(t − t₀)]。儲存的是靜態官方座標而非 δ，站速度造成的
+漂移自動跟上。點集在以點集重心為原點的局部平面（公里）做 Delaunay 三角化（重用 cellmgr 的
+`nrtk_delaunay`，剔除退化三角形），在三角形內以重心座標線性內插 δ（ECEF 三維向量；相鄰三角形
+在共用邊上的值相同，rover 跨格網重建 VRS 時座標不跳，實測邊兩側 1 m 的差 < 0.1 mm）。
+點集外：到最近三角形邊的平面距離 ≤ `datum_extrap_max_km`（20）時延伸該三角形的平面，更遠時取
+最近點的 δ 常數；點少於 3 個或 `datum_interp: nearest` 時一律取最近點。反向轉換（基準 → ITRF）
+疊代兩次，往返誤差 < 1 mm。每次評估回傳使用的點與權重、外插距離、是否用到 `source: theory` 的點，
+以及 δ 在該處的 E/N/U 分量。
+
+### 9.3 套用位置
+
+| 位置 | 做法 |
+| --- | --- |
+| 即時 VRS（`server.datum_mounts` 的掛載點） | rover 的 GGA 在該基準，先反向轉回 ITRF，再取 1 m 格網、選格網、建 VRS；δ 在建立 VRS 時以當下時間評估一次，VRS 存續期間不變（避免 1006 漂移，一個 session 內漂移 < 0.1 mm）；1006 = 格網位置 + δ，DF141 維持 1、DF021 維持 0 |
+| 即時最近站透傳（NEAR_*） | 1006 = 該站在基準的官方座標（δ 場在頂點的值即該站自己的 δ） |
+| 離線 `nrtk-gen --datum NAME` | RTCM 檔的 1006 平移；RINEX 檔頭 APPROX POSITION 保持 ITRF 並加註 COMMENT；另寫 `<job>_datum.json`（兩組座標、δ、TM2、使用的點） |
+| 留一法驗證 | 維持 ITRF（留一站的真值是 ITRF 座標） |
+| sourcetable | 每個基準多三條 STR，identifier 為 `VRS TWD97[2010] cal-2026.10`（label + version），ITRF 掛載點改為 `VRS ITRF2020` |
+| `/status` | `datums[]`：點數、三角形數、缺座標的站與是否被校正點覆蓋、狀態；每個 session：基準名稱／版本、1006 的經緯度與橢球高、TM2 E/N（分帶 121 或 119）、δ 的 E/N/U、內插模式與外插距離、是否用到理論值 |
+
+### 9.4 完整性與降級
+
+- **缺座標的站**：enabled 但沒有該基準座標的站列為 missing；若有校正點在 `datum_cover_km`（10）
+  內則視為被覆蓋。VRS 所在的網路三角形含有未被覆蓋的 missing 站，或 VRS 位於網路三角形內但 δ 只能
+  外插時，該格網為 datum-incomplete：**在該基準服務是錯的**（δ 只能跨過那一站從更遠的點內插），
+  session 在收到第一筆 GGA、知道位置後關閉連線，log 與 `session_events.close_datum_incomplete`
+  記錄原因。與設計文件的差異：文件寫「拒絕連線並回 HTTP 503」，但 NTRIP 連線建立時還不知道 rover
+  位置，只能在 GGA 之後關閉；ITRF 掛載點不受影響。
+- **rover 在網外**（cellmgr 本身在外插）：照常服務，`/status` 的 `datum_mode` 為 `extrapolated`
+  或 `nearest`（含外插距離）。
+- **理論值**：`source: theory` 的站（尚未聯測、以第 9.5 節理論鏈暫代）參與內插時，session 標記
+  `datum_source: theory`。
+- 每個基準自己的 `version` 字串進 sourcetable 與 `/status`；δ 的兩個輸入（站的 ITRF 座標、官方
+  座標）各自更新時都應遞增。
+
+### 9.5 理論鏈（方法 B，只作檢核與暫代）
+
+`nrtk_datum_theory()`：ITRF2020 座標以站速度退回基準曆元，再以 IERS ITRF 產品中心公布的
+ITRF2020 → 舊框架 14 參數（參考曆元 2015.0；ITRF2014／2008／2005／2000／97／96／94）做 Helmert
+轉換；同震位移不在模型內。預設對應：`TWD97_2010` → ITRF94 @ 2010.0、`TWD97_2020` →
+ITRF2014 @ 2020.0、`TWD97` → ITRF94 @ 1997.0（`output_datums[].frame/epoch` 可改）。台灣的
+ITRF2020 → ITRF94@2010.0 效果為北 −5.5 cm、東 +0.3 cm、高 −0.7 cm，ITRF2020 → ITRF2014@2020.0
+只有 2–3 mm（單元測試核對）。方法 B 在平緩區約 2–4 cm，不能取代控制點聯測（方法 A）。
+
+### 9.6 TM2 與高程
+
+`nrtk_tm2()`：GRS80 橫麥卡托，k₀ = 0.9999，橫座標平移 250 000 m，中央經線 121°（本島）或 119°
+（經度 < 120° 時：澎湖金馬），Krüger 級數到 n⁴（與獨立的 Snyder 級數和數值積分的子午線弧長
+相差 < 1 mm）。只用於 `/status`、`_datum.json` 與工具的顯示；1006 的高度是該基準的橢球高，
+正高（TWVD2001）與大地起伏模型留在 rover 端的現場軟體，與 e-GNSS 的分工相同。
+
+### 9.7 工具
+
+- `nrtk-tools datum check -c conf`：每個基準的點、δ（E/N/U）、留一內插殘差（內部點）、缺座標的站與
+  覆蓋情形；兩個基準都有的點列出 δ(2020) − δ(2010)（應與附近控制點兩版公告值的差一致）。
+- `nrtk-tools datum at -c conf --llh|--ecef [--in NAME]`：某點在各基準的 δ、座標與 TM2。
+- `nrtk-tools datum theory -c conf [--velocity-field vel.csv]`：方法 A 與方法 B 逐站比對，
+  > 5 cm 的站列為待查；沒有速度的站會提示其差異含有從基準曆元至今的站移動。
+- `nrtk-tools datum tie -c conf --station ID --ties ties.yaml`：由控制點聯測基線（station → 控制點
+  的固定解向量）與控制點公告值求站在各基準的座標：先以逐分量中位數為初值，剔除 > 3 cm 的控制點，
+  再加權平均，印出可貼回設定檔的 YAML 片段（不直接改寫設定檔，以免丟掉註解）。
+
+### 9.8 設定
+
+`network.output_datums`、`datum_interp`、`datum_extrap_max_km`、`datum_cover_km`、
+`datum_points_file`，站的 `datum: {NAME: {ecef|llh, source, observed, sigma_m}}`，
+`server.datum_mounts: [{datum, msm7, msm4, nearest}]`（名稱預設 `<掛載點>_<基準>`，空字串停用）。
+載入時檢查站的 `datum` 鍵都在 `output_datums` 內、官方座標與 ITRF 座標相差 < 5 m（抓錯版本或
+錯單位）、校正點 id 不與站重複。`conf/example.yaml`、`conf/datum_points.example.yaml`。
+
+## 10. 已知限制
 
 - 只處理靜態基站；1 Hz 輸出（第 14 章）。
 - GLONASS 未納入（規格書列為選配）。
